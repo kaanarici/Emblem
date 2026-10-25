@@ -241,11 +241,16 @@ struct ListeningOverlay: View {
     }
 }
 
-@Observable @MainActor
+@MainActor
 final class TouchActivity {
     static let shared = TouchActivity()
     private(set) var last = Date()
-    func touched() { last = Date() }
+    var onTouch: (@MainActor () -> Void)?
+
+    func touched() {
+        last = Date()
+        onTouch?()
+    }
 }
 
 struct TouchOriginRecorder: UIViewRepresentable {
