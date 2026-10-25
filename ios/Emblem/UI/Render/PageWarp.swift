@@ -24,17 +24,11 @@ struct LiquidLensFrame {
     let center: CGPoint
     let radius: CGFloat
     var time: Double = 0
+    var calm: Double = 0
+    var presence: Double = 1
 
     var apex: CGFloat { center.y - radius }
     var circle: Shader.Argument { .float3(Float(center.x), Float(center.y), Float(radius)) }
-
-    @MainActor @ViewBuilder
-    func transcriptMask(_ style: ListeningStyle) -> some View {
-        switch style {
-        case .wave: WaveListening.transcriptMask(self)
-        case .dome: DomeListening.transcriptMask(self)
-        }
-    }
 
     func layerTop(reach: CGFloat) -> CGFloat {
         let top = max(0, min(size.height, apex - reach))
@@ -48,6 +42,9 @@ final class DomeMotion {
     private var easedSpeech = 0.0
     private var settledRadius = 0.0
     private var releaseRadius = 0.0
+    private var calm = 0.0
+    private var presence = 0.0
+    private var presenceVelocity = 0.0
     private(set) var radius = 0.0
 
     func reset() {
@@ -55,43 +52,70 @@ final class DomeMotion {
         speech = 0
         easedSpeech = 0
         settledRadius = 0
+        calm = 0
+        presence = 0
+        presenceVelocity = 0
         radius = 0
+    }
+
+    private func stepPresence(toward target: Double, response: Double, dt: Double) {
+        let omega = 2 * Double.pi / response
+        let offset = presence - target
+        let drive = presenceVelocity + omega * offset
+        let decay = exp(-omega * dt)
+        presence = target + (offset + drive * dt) * decay
+        presenceVelocity = (drive - omega * (offset + drive * dt)) * decay
     }
 
     func beginRelease() { releaseRadius = radius }
 
     func advance(now: TimeInterval, size: CGSize, sinceStart: TimeInterval,
-                 sinceRelease: TimeInterval?, raw: Double, micY: CGFloat) -> LiquidLensFrame {
+                 sinceRelease: TimeInterval?, raw: Double, micY: CGFloat,
+                 style: ListeningStyle, restApex: CGFloat? = nil) -> LiquidLensFrame {
         let h = Double(size.height), w = Double(size.width)
         let dt = lastTime == 0 ? 1.0 / 60 : min(0.1, max(0.001, now - lastTime))
         lastTime = now
 
+        let wave = style == .wave
         let target = min(1, raw * 2.4)
-        speech += (target - speech) * (1 - exp(-dt / (target > speech ? 1.2 : 1.0)))
-        easedSpeech += (speech - easedSpeech) * (1 - exp(-dt / 0.2))
+        let rise = wave ? 0.16 : 1.2, fall = wave ? 0.45 : 1.0
+        speech += (target - speech) * (1 - exp(-dt / (target > speech ? rise : fall)))
+        easedSpeech += (speech - easedSpeech) * (1 - exp(-dt / (wave ? 0.08 : 0.2)))
 
         let t = max(0, sinceStart)
         let breath = Self.breath(at: t + 0.4)
+        let depth = wave ? 2.2 : 1
         let birthRadius = 0.38 * h
-        let restRadius = h / 956 * breath.radius + 0.07 * h * easedSpeech
+        let restRadius = h / 956 * (435.5 + (breath.radius - 435.5) * depth)
+            + (wave ? 0.09 : 0.07) * h * easedSpeech
+        let restY = h + h / 956 * breath.dy * depth
+        let goal = restApex.map { restY - Double($0) } ?? restRadius
+        calm += ((restApex == nil ? 0 : 1) - calm) * (1 - exp(-dt / 0.35))
         if settledRadius == 0 { settledRadius = birthRadius }
-        settledRadius += (restRadius - settledRadius) * (1 - exp(-dt / 0.12))
+        settledRadius += (goal - settledRadius) * (1 - exp(-dt / (restApex == nil ? 0.12 : 0.2)))
 
         let birth = min(1, pow(t / 0.1, 1.2))
         let blend = Self.smoothstep(0.08, 0.25, t)
         var r = birthRadius * birth * (1 - blend) + settledRadius * blend
-        let restY = h + h / 956 * breath.dy
-        let cy = Double(micY) + (restY - Double(micY)) * birth
-        let cx = w / 2 + w / 440 * breath.dx * Self.smoothstep(0, 0.4, t)
+        var cy = Double(micY) + (restY - Double(micY)) * birth
+        var cx = w / 2 + w / 440 * breath.dx * depth * Self.smoothstep(0, 0.4, t)
 
-        if let sinceRelease {
+        if wave {
+            let closing = sinceRelease != nil
+            stepPresence(toward: closing ? 0 : 1, response: closing ? 0.44 : 0.36, dt: dt)
+            let p = max(0, presence)
+            r = settledRadius * p
+            cy = Double(micY) + (restY - Double(micY)) * p
+            cx = w / 2 + w / 440 * breath.dx * depth * p
+        } else if let sinceRelease {
             let k = min(1, max(0, sinceRelease / 0.3))
             r = releaseRadius * (1 - k * k * k)
         }
         radius = r
         let progress = min(1, r / 40)
         return LiquidLensFrame(size: size, progress: progress, breathe: easedSpeech,
-                               center: CGPoint(x: cx, y: cy), radius: r, time: t)
+                               center: CGPoint(x: cx, y: cy), radius: r, time: t, calm: calm,
+                               presence: wave ? max(0, presence) : 1)
     }
 
     static func breath(at t: Double) -> (dx: Double, dy: Double, radius: Double) {
@@ -111,10 +135,24 @@ final class DomeMotion {
     }
 }
 
+@Observable @MainActor
+final class ListeningPulse {
+    static let shared = ListeningPulse()
+    private(set) var count = 0
+
+    func emerge() { count += 1 }
+
+    func absorb() {
+        count += 1
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.55)
+    }
+}
+
 struct LiquidLensBackdrop<Foreground: View>: View {
     let sourceImage: UIImage?
     let frosted: UIImage?
     let active: Bool
+    var restApex: CGFloat? = nil
     var audioLevel: () -> Float
     let foreground: (LiquidLensFrame) -> Foreground
 
@@ -127,12 +165,13 @@ struct LiquidLensBackdrop<Foreground: View>: View {
     @Environment(\.accent) private var accent
     @Environment(\.listeningStyle) private var style
 
-    init(sourceImage: UIImage?, frosted: UIImage?, active: Bool,
+    init(sourceImage: UIImage?, frosted: UIImage?, active: Bool, restApex: CGFloat? = nil,
          audioLevel: @escaping () -> Float = { 0 },
          @ViewBuilder foreground: @escaping (LiquidLensFrame) -> Foreground) {
         self.sourceImage = sourceImage
         self.frosted = frosted
         self.active = active
+        self.restApex = restApex
         self.audioLevel = audioLevel
         self.foreground = foreground
     }
@@ -150,10 +189,15 @@ struct LiquidLensBackdrop<Foreground: View>: View {
                         sinceStart: now.timeIntervalSince(activatedAt),
                         sinceRelease: deactivatedAt.map { now.timeIntervalSince($0) },
                         raw: Double(audioLevel()),
-                        micY: proxy.size.height - 62)
+                        micY: proxy.size.height - 62,
+                        style: style,
+                        restApex: restApex)
                     layers(frame)
                         .onChange(of: frame.radius < 1 && deactivatedAt != nil, initial: true) { _, settled in
                             if settled && !active { deactivatedAt = nil }
+                        }
+                        .onChange(of: frame.presence < 0.1 && deactivatedAt != nil) { _, absorbed in
+                            if absorbed, !active { ListeningPulse.shared.absorb() }
                         }
                 }
             } else {
@@ -173,8 +217,12 @@ struct LiquidLensBackdrop<Foreground: View>: View {
     }
 
     private func start() {
-        motion.reset()
-        activatedAt = Date()
+        let closing = deactivatedAt != nil && motion.radius >= 1
+        if !closing || style != .wave {
+            motion.reset()
+            activatedAt = Date()
+            if style == .wave { ListeningPulse.shared.emerge() }
+        }
         deactivatedAt = nil
     }
 
@@ -195,6 +243,18 @@ struct LiquidLensBackdrop<Foreground: View>: View {
             }
             foreground(frame)
                 .frame(width: frame.size.width, height: frame.size.height)
+        }
+    }
+}
+
+extension View {
+    @MainActor @ViewBuilder
+    func transcriptLens(_ frame: LiquidLensFrame, style: ListeningStyle) -> some View {
+        switch style {
+        case .wave:
+            layerEffect(WaveListening.transcriptLens(frame), maxSampleOffset: CGSize(width: 76, height: 56))
+        case .dome:
+            mask { DomeListening.transcriptMask(frame) }
         }
     }
 }
@@ -239,6 +299,7 @@ struct ListeningGlass {
                     .float(Float(top)),
                     .float(Float(frame.time)),
                     .float(Float(frame.breathe)),
+                    .float(Float(frame.calm)),
                     accent.washArgument),
                 maxSampleOffset: maxOffset)
             .frame(width: frame.size.width, height: frame.size.height, alignment: .bottom)

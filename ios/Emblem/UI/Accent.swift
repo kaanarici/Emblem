@@ -69,6 +69,18 @@ enum Accent: String, CaseIterable, Identifiable {
         return SIMD3(repeating: 1) - (SIMD3(repeating: 1) - channels / channels.max()) * 0.16
     }
 
+    var ink: Color {
+        guard !isNeutral else { return Theme.ink }
+        let light = Self.blend(rgb, 0x1F1F1F, 0.5), dark = Self.blend(rgb, 0xF2F2F4, 0.6)
+        return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+    }
+
+    private static func blend(_ a: UInt32, _ b: UInt32, _ t: CGFloat) -> UIColor {
+        func channel(_ c: UInt32, _ shift: UInt32) -> CGFloat { CGFloat((c >> shift) & 0xFF) / 255 }
+        func mix(_ shift: UInt32) -> CGFloat { channel(a, shift) * (1 - t) + channel(b, shift) * t }
+        return UIColor(red: mix(16), green: mix(8), blue: mix(0), alpha: 1)
+    }
+
     var washArgument: Shader.Argument { .float3(wash.x, wash.y, wash.z) }
 
     var swatch: UIImage {

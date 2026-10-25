@@ -17,7 +17,7 @@ static float domeDistance(float2 position, float3 circle, thread float2 &n) {
 [[ stitchable ]] half4 domeLens(float2 position, SwiftUI::Layer layer, float2 size,
                                 float3 circle, float amount, float washLuma,
                                 float tintTime, float tintOffset, float tintLevel, float top,
-                                float time, float breathe, float3 tint) {
+                                float time, float breathe, float calm, float3 tint) {
     if (amount <= 0.001) return half4(0.0);
     float2 screen = position + float2(0.0, top);
     float2 bounds = float2(size.x, size.y - top) - float2(0.5);
@@ -40,7 +40,7 @@ static float domeDistance(float2 position, float3 circle, thread float2 &n) {
 [[ stitchable ]] half4 domeRim(float2 position, SwiftUI::Layer layer, float2 size,
                                float3 circle, float amount, float washLuma,
                                float tintTime, float tintOffset, float tintLevel, float top,
-                               float time, float breathe, float3 tint) {
+                               float time, float breathe, float calm, float3 tint) {
     if (amount <= 0.001) return half4(0.0);
     float2 screen = position + float2(0.0, top);
     float2 n;

@@ -11,9 +11,11 @@ struct DomeListening: View {
                 glass.layer(source, reach: 48, maxOffset: CGSize(width: 24, height: 30),
                             shader: ShaderLibrary.domeRim)
             }
-            if let frosted {
-                glass.layer(frosted, reach: 40, maxOffset: CGSize(width: 16, height: 16),
+            if let lens = frosted ?? source {
+                glass.layer(lens, reach: 40, maxOffset: CGSize(width: 16, height: 16),
                             shader: ShaderLibrary.domeLens)
+                    .id(frosted == nil)
+                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
             }
         }
     }

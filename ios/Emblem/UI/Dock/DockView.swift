@@ -27,6 +27,7 @@ struct DockLayoutKey: Equatable {
     let showsStatus: Bool
     let status: String
     let trailingControl: DockTrailingControl?
+    let hint: Bool
 }
 
 enum VoiceFinalizationIntent {
@@ -51,6 +52,9 @@ struct DockView: View {
     @Environment(\.performAction) var performAction
 
     @State var holdStartedAt: Date?
+    @State var lockPull: CGFloat = 0
+    @State var holdHint = false
+    @State var holdHintDelay: Double = 8
     @GestureState var voicePressActive = false
     @State var voiceStartTask: Task<Void, Never>?
     @State var voiceFinalizationTask: Task<Void, Never>?
@@ -308,6 +312,7 @@ struct DockView: View {
             darkPill(thinking: thinking, compact: trailingControl != nil, merging: trailingControl)
         }
         .animation(dockMorph, value: dockLayoutKey)
+        .modifier(HoldHintScheduler(dock: self))
         .onChange(of: trailingControl) { _, control in
             if let control {
                 shownTrailing = control

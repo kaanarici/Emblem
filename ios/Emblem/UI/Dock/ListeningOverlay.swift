@@ -10,10 +10,11 @@ struct ListeningOverlay: View {
     @Environment(ConversationStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.listeningStyle) private var style
+    @Environment(\.accent) private var accent
 
     private static let minimumTranscriptHeight: CGFloat = 132
 
-    @State private var transcriptHeight: CGFloat = Self.minimumTranscriptHeight
+    @State private var transcriptHeight: CGFloat = 0
     @State private var selection: TextSelection?
     @FocusState private var editorFocused: Bool
     @State private var editorHeight: CGFloat = 0
@@ -23,19 +24,21 @@ struct ListeningOverlay: View {
             LiquidLensBackdrop(
                 sourceImage: speech.listeningSourceBackdrop,
                 frosted: speech.listeningFrostedBackdrop,
-                active: active && speech.phase != .editing,
+                active: active && (style == .wave || speech.phase != .editing),
+                restApex: style == .wave && speech.phase == .editing ? editingApex : nil,
                 audioLevel: { speech.audioLevel }) { frame in
                 ZStack(alignment: .bottom) {
-                    if speech.phase == .editing {
+                    if speech.phase == .editing, style == .dome {
                         domeWash(frame: frame)
                     }
 
                     if speech.phase == .editing {
+                        let wave = style == .wave
                         LinearGradient(
                             stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: Theme.listeningWash.opacity(0.96), location: 0.28),
-                                .init(color: Theme.listeningWash, location: 1),
+                                .init(color: .clear, location: wave ? 0.3 : 0),
+                                .init(color: Theme.listeningWash.opacity(wave ? 0.5 : 0.96), location: wave ? 0.55 : 0.28),
+                                .init(color: Theme.listeningWash.opacity(wave ? 0.7 : 1), location: 1),
                             ],
                             startPoint: .top,
                             endPoint: .bottom)
@@ -48,7 +51,7 @@ struct ListeningOverlay: View {
                         }
                     }
                     .frame(width: frame.size.width, height: frame.size.height)
-                    .mask { frame.transcriptMask(style) }
+                    .transcriptLens(frame, style: style)
                 }
                 .animation(.smooth(duration: 0.25), value: speech.overlayText.isEmpty)
                 .animation(.smooth(duration: 0.25), value: active)
@@ -66,7 +69,7 @@ struct ListeningOverlay: View {
         .contentShape(Rectangle())
         .allowsHitTesting(active)
         .onChange(of: active) { _, isActive in
-            if !isActive { transcriptHeight = Self.minimumTranscriptHeight }
+            if !isActive { transcriptHeight = 0 }
             if !isActive {
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(700))
@@ -86,7 +89,7 @@ struct ListeningOverlay: View {
         @Bindable var speech = speech
         return TextEditor(text: $speech.draft, selection: $selection)
             .font(.system(size: 22, weight: .semibold))
-            .foregroundStyle(Theme.ink)
+            .foregroundStyle(accent.ink)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .accentTint(Theme.accentDark)
@@ -179,8 +182,8 @@ struct ListeningOverlay: View {
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: Theme.listeningWash.opacity(0.9), location: 1 - solid / washHeight),
-                    .init(color: Theme.listeningWash.opacity(0.9), location: 1),
+                    .init(color: Theme.listeningWash.opacity(0.55), location: 1 - solid / washHeight),
+                    .init(color: Theme.listeningWash.opacity(0.6), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom)
@@ -192,13 +195,22 @@ struct ListeningOverlay: View {
                     text: speech.overlayText,
                     contentHeight: $transcriptHeight,
                     minimumHeight: Self.minimumTranscriptHeight,
-                    maximumHeight: transcriptMaximumHeight)
+                    maximumHeight: transcriptMaximumHeight,
+                    clipsOverflow: style == .dome)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.bottom, bottomClearance)
             .padding(.horizontal, 36)
         }
         .frame(width: frame.size.width, height: frame.size.height)
+    }
+
+    private var editingApex: CGFloat {
+        let keyboard = KeyboardPresence.shared
+        let lowered = keyboard.isVisible ? 0 : max(0, keyboard.lastHeight - Self.bottomInset)
+        let height = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first?.screen.bounds.height ?? 956
+        return height * 0.20 + lowered
     }
 
     private func domeWash(frame: LiquidLensFrame) -> some View {
@@ -229,82 +241,11 @@ struct ListeningOverlay: View {
     }
 }
 
-private struct LiveTranscript: View {
-    let text: String
-    @Binding var contentHeight: CGFloat
-    let minimumHeight: CGFloat
-    let maximumHeight: CGFloat
-
-    var body: some View {
-        ScrollViewReader { reader in
-            ScrollView(.vertical) {
-                VStack(alignment: .center, spacing: 0) {
-                    Text(text)
-                        .accessibilityIdentifier("voice-live-transcript")
-                        .font(.system(size: 20, weight: .semibold))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(Theme.ink)
-                        .lineSpacing(3)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .background(
-                            GeometryReader { proxy in
-                                Color.clear.preference(
-                                    key: TranscriptHeightKey.self,
-                                    value: proxy.size.height)
-                            })
-                    Color.clear.frame(height: 1).id("transcript-tail")
-                }
-            }
-            .scrollIndicators(.hidden)
-            .scrollDisabled(true)
-            .defaultScrollAnchor(.bottom)
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
-            .frame(
-                height: min(max(contentHeight + 14, minimumHeight), maximumHeight),
-                alignment: .bottom)
-            .clipped()
-            .mask {
-                if contentHeight > maximumHeight + 1 {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: 0.38),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom)
-                } else {
-                    Rectangle().fill(.white)
-                }
-            }
-            .onChange(of: maximumHeight) { _, height in
-                guard contentHeight > height + 1 else { return }
-                Task { @MainActor in
-                    await Task.yield()
-                    var transaction = Transaction()
-                    transaction.animation = nil
-                    withTransaction(transaction) {
-                        reader.scrollTo("transcript-tail", anchor: .bottom)
-                    }
-                }
-            }
-            .onPreferenceChange(TranscriptHeightKey.self) { height in
-                contentHeight = height
-                guard height > maximumHeight + 1 else { return }
-                Task { @MainActor in
-                    await Task.yield()
-                    reader.scrollTo("transcript-tail", anchor: .bottom)
-                }
-            }
-        }
-    }
-}
-
-private struct TranscriptHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 32
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
+@Observable @MainActor
+final class TouchActivity {
+    static let shared = TouchActivity()
+    private(set) var last = Date()
+    func touched() { last = Date() }
 }
 
 struct TouchOriginRecorder: UIViewRepresentable {
@@ -360,6 +301,7 @@ struct TouchOriginRecorder: UIViewRepresentable {
             shouldReceive touch: UITouch
         ) -> Bool {
             if let window = gestureRecognizer.view { lastTouch.point = touch.location(in: window) }
+            TouchActivity.shared.touched()
             return false
         }
     }
@@ -586,9 +528,9 @@ struct ListeningTint: View {
             try? await ShaderLibrary.listeningTint(size, f, f, tint, f).compile(as: .colorEffect)
             let circle = Shader.Argument.float3(0, 0, 1)
             for shader in [ShaderLibrary.waveLens, ShaderLibrary.waveMeniscus, ShaderLibrary.domeLens, ShaderLibrary.domeRim] {
-                try? await shader(size, circle, f, f, f, f, f, f, f, f, tint).compile(as: .layerEffect)
+                try? await shader(size, circle, f, f, f, f, f, f, f, f, f, tint).compile(as: .layerEffect)
             }
-            try? await ShaderLibrary.waveTranscriptMask(size, circle, f, f, f).compile(as: .colorEffect)
+            try? await ShaderLibrary.waveTranscript(size, circle, f, f, f, f).compile(as: .layerEffect)
         }
         .onChange(of: listening) { _, isListening in
             if isListening {

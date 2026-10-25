@@ -15,11 +15,13 @@ extension DockView {
                     holdStartedAt = Date()
                     startListening()
                 }
-                if speech.phase == .held, value.translation.height < -60 {
-                    speech.phase = .locked
+                if speech.phase == .held {
+                    lockPull = max(0, -value.translation.height)
+                    if lockPull > Self.lockDistance { speech.phase = .locked }
                 }
             }
             .onEnded { _ in
+                lockPull = 0
                 endHoldIfNeeded()
             }
     }
@@ -44,7 +46,7 @@ extension DockView {
     }
 
     private func startListening() {
-        speech.captureListeningBackdrop()
+        speech.captureListeningBackdrop(reusingUnchanged: true)
         speech.prepareForFreshSegment()
         speech.phase = .held
         store.dockState = .listening

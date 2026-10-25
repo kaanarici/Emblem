@@ -52,7 +52,7 @@ static float3 generationWash(float2 position, float2 size, float time, float cyc
 }
 
 static float3 listeningWash(float3 wash, float time) {
-    return mix(float3(1.0), wash, smoothstep(0.0, 0.12, time));
+    return mix(float3(1.0), wash, smoothstep(0.0, 0.32, time));
 }
 
 static float washDither(float2 position) {

@@ -64,12 +64,30 @@ final class SpeechService {
         return before + lead + live + tail + after
     }
 
-    func captureListeningBackdrop() {
-        listeningSourceBackdrop = capturePageBackdrop()
-        listeningFrostedBackdrop = listeningSourceBackdrop.flatMap(LensFrost.frost)
+    @ObservationIgnored private var frostTask: Task<Void, Never>?
+    @ObservationIgnored private var backdropFingerprint: [CGFloat]?
+
+    func captureListeningBackdrop(reusingUnchanged: Bool = false) {
+        let fingerprint = Self.pageFingerprint()
+        if reusingUnchanged, listeningSourceBackdrop != nil, fingerprint != nil, fingerprint == backdropFingerprint {
+            return
+        }
+        let source = capturePageBackdrop()
+        backdropFingerprint = fingerprint
+        listeningSourceBackdrop = source
+        listeningFrostedBackdrop = nil
+        frostTask?.cancel()
+        guard let source else { return }
+        frostTask = Task {
+            let frosted = await Task.detached(priority: .userInitiated) { LensFrost.frost(source) }.value
+            guard !Task.isCancelled, listeningSourceBackdrop === source else { return }
+            listeningFrostedBackdrop = frosted
+        }
     }
 
     func clearListeningBackdrop() {
+        frostTask?.cancel()
+        backdropFingerprint = nil
         listeningSourceBackdrop = nil
         listeningFrostedBackdrop = nil
     }
@@ -98,6 +116,23 @@ final class SpeechService {
                 in: window.convert(target.bounds, from: target),
                 afterScreenUpdates: false)
         }
+    }
+
+    private static func pageFingerprint() -> [CGFloat]? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let window = scenes.first?.windows.first(where: \.isKeyWindow),
+              let page = pageCaptureView(in: window) else { return nil }
+        var values: [CGFloat] = [window.bounds.width, window.bounds.height,
+                                 CGFloat(window.traitCollection.userInterfaceStyle.rawValue)]
+        var queue: [UIView] = [page]
+        while !queue.isEmpty {
+            let view = queue.removeFirst()
+            if let scroll = view as? UIScrollView {
+                values += [scroll.contentOffset.x, scroll.contentOffset.y, scroll.contentSize.height]
+            }
+            queue.append(contentsOf: view.subviews)
+        }
+        return values
     }
 
     private static func pageCaptureView(in window: UIWindow) -> UIView? {
@@ -190,9 +225,11 @@ final class SpeechService {
                 attributeOptions: preset.attributeOptions)
             self.transcriber = transcriber
 
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: .duckOthers)
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try await Task.detached(priority: .userInitiated) {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playAndRecord, mode: .measurement, options: .duckOthers)
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
+            }.value
 
             let analyzer = SpeechAnalyzer(modules: [transcriber])
             self.analyzer = analyzer
@@ -247,8 +284,11 @@ final class SpeechService {
                     tapBuilder?.yield(AnalyzerInput(buffer: converted))
                 }
             }
-            audioEngine.prepare()
-            try audioEngine.start()
+            let engine = audioEngine
+            try await Task.detached(priority: .userInitiated) {
+                engine.prepare()
+                try engine.start()
+            }.value
             isRunning = true
         } catch {
             await teardown()

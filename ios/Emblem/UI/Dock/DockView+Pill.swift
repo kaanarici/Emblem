@@ -14,7 +14,7 @@ extension DockView {
             ? (isQuestionContinue(displaysStatus ? nil : activeTrailingControl) ? Self.wideMicWidth : Self.innerControlSize)
             : (displaysStatus
                 ? min(Self.statusWidth, measuredStatusWidth + Self.statusChromeWidth + 4)
-                : Self.micWidth)
+                : (holdHint ? Self.holdHintWidth : Self.micWidth))
         return DockWidthMorph(
             width: targetWidth,
             height: Self.innerControlSize,
@@ -28,6 +28,7 @@ extension DockView {
                     displayedStatus: $displayedStatus,
                     displaysStatus: $displaysStatus,
                     locked: speech.phase == .locked,
+                    hint: holdHint,
                     statusFontSize: Self.statusFontSize,
                     onStop: { store.stop() })
                     .frame(width: labelWidth)
@@ -68,6 +69,12 @@ extension DockView {
         .background(micShape)
         .contentShape(RoundedRectangle(cornerRadius: Self.micRadius, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: Self.micRadius, style: .continuous))
+        .keyframeAnimator(initialValue: 1.0, trigger: reduceMotion ? 0 : ListeningPulse.shared.count) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            SpringKeyframe(1.06, duration: 0.12, spring: .snappy(duration: 0.18))
+            SpringKeyframe(1, duration: 0.36, spring: .smooth(duration: 0.36))
+        }
         .scaleEffect(reduceMotion ? 1 : (micExpanded ? 1.48 : 1))
         .zIndex(micExpanded ? 2 : 0)
         .animation(micPressMotion, value: micExpanded)

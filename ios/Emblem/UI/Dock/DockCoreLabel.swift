@@ -2,7 +2,7 @@ import SwiftUI
 import EmblemCore
 
 private enum DockCoreContent: Equatable {
-    case microphone(locked: Bool)
+    case microphone(locked: Bool, hint: Bool)
     case status(String)
 
     var isStatus: Bool {
@@ -134,12 +134,13 @@ struct DockCoreLabel: View {
     @Binding var displayedStatus: String
     @Binding var displaysStatus: Bool
     let locked: Bool
+    let hint: Bool
     let statusFontSize: CGFloat
     let onStop: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accent) private var accent
-    @State private var displayedContent = DockCoreContent.microphone(locked: false)
+    @State private var displayedContent = DockCoreContent.microphone(locked: false, hint: false)
     @State private var visible = true
     @State private var statusTextVisible = true
     @State private var lastStatusSwap = Date.distantPast
@@ -151,6 +152,7 @@ struct DockCoreLabel: View {
         displayedStatus: Binding<String>,
         displaysStatus: Binding<Bool>,
         locked: Bool,
+        hint: Bool,
         statusFontSize: CGFloat,
         onStop: @escaping () -> Void
     ) {
@@ -159,6 +161,7 @@ struct DockCoreLabel: View {
         _displayedStatus = displayedStatus
         _displaysStatus = displaysStatus
         self.locked = locked
+        self.hint = hint
         self.statusFontSize = statusFontSize
         self.onStop = onStop
     }
@@ -185,7 +188,7 @@ struct DockCoreLabel: View {
     }
 
     private var targetContent: DockCoreContent {
-        thinking ? .status(status) : .microphone(locked: locked)
+        thinking ? .status(status) : .microphone(locked: locked, hint: hint && !locked)
     }
 
     @ViewBuilder
@@ -226,11 +229,21 @@ struct DockCoreLabel: View {
             .padding(.trailing, DockStatusMetrics.textEdgePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
-        case .microphone(let locked):
-            Image(systemName: locked ? "square.fill" : "mic.fill")
+        case .microphone(let locked, let hint):
+            HStack(spacing: 8) {
+                Image(systemName: locked ? "square.fill" : "mic.fill")
                     .font(.system(size: locked ? 19 : 16, weight: .medium))
-                .foregroundStyle(locked && accent.isNeutral ? Theme.record : accent.glyph)
-                .accessibilityIdentifier("dock-microphone")
+                    .foregroundStyle(locked && accent.isNeutral ? Theme.record : accent.glyph)
+                    .accessibilityIdentifier("dock-microphone")
+                if hint {
+                    ShimmerText(DockView.holdHintText, active: visible, size: 15)
+                        .fixedSize()
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .offset(x: -8))
+                                .animation(.easeOut(duration: 0.3).delay(0.1)),
+                            removal: .opacity.animation(.easeOut(duration: 0.1))))
+                }
+            }
         }
     }
 
@@ -242,6 +255,13 @@ struct DockCoreLabel: View {
             synchronizePresentation(for: content)
             withAnimation(.easeOut(duration: reduceMotion ? 0.06 : 0.10)) {
                 visible = true
+            }
+            return
+        }
+
+        if case .microphone(let shown, _) = displayedContent, case .microphone(let next, _) = content, shown == next {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.1) : DockView.pillMotion) {
+                displayedContent = content
             }
             return
         }

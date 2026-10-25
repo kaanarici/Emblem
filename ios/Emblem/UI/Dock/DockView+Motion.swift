@@ -91,7 +91,8 @@ extension DockView {
         DockLayoutKey(
             showsStatus: displaysStatus,
             status: displaysStatus ? displayedStatus : "",
-            trailingControl: displaysStatus ? nil : activeTrailingControl)
+            trailingControl: displaysStatus ? nil : activeTrailingControl,
+            hint: holdHint)
     }
 
     var micPressMotion: Animation {

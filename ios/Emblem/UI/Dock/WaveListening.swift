@@ -11,18 +11,18 @@ struct WaveListening: View {
                 glass.layer(source, reach: 104, maxOffset: CGSize(width: 76, height: 56),
                             shader: ShaderLibrary.waveMeniscus)
             }
-            if let frosted {
-                glass.layer(frosted, reach: 48, maxOffset: CGSize(width: 8, height: 8),
+            if let lens = frosted ?? source {
+                glass.layer(lens, reach: 48, maxOffset: CGSize(width: 8, height: 8),
                             shader: ShaderLibrary.waveLens)
+                    .id(frosted == nil)
+                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
             }
         }
     }
 
-    static func transcriptMask(_ frame: LiquidLensFrame) -> some View {
-        Rectangle()
-            .fill(.white)
-            .colorEffect(ShaderLibrary.waveTranscriptMask(
-                .float2(frame.size), frame.circle, .float(Float(frame.time)),
-                .float(Float(frame.breathe)), .float(Float(frame.progress))))
+    static func transcriptLens(_ frame: LiquidLensFrame) -> Shader {
+        ShaderLibrary.waveTranscript(
+            .float2(frame.size), frame.circle, .float(Float(frame.time)),
+            .float(Float(frame.breathe)), .float(Float(frame.calm)), .float(Float(frame.progress)))
     }
 }

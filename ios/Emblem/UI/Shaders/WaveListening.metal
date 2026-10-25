@@ -18,9 +18,9 @@ static float2 waveOffset(float x, float width, float time, float breathe) {
                   a1 * k1 * cos(p1) + a2 * k2 * cos(p2) + a3 * k3 * cos(p3));
 }
 
-static float3 waveSurface(float2 screen, float3 circle, float width, float time, float breathe) {
+static float3 waveSurface(float2 screen, float3 circle, float width, float time, float breathe, float calm) {
     float2 v = screen - circle.xy;
-    float2 wave = waveOffset(screen.x, width, time, breathe) * clamp(circle.z / 220.0, 0.0, 1.0);
+    float2 wave = waveOffset(screen.x, width, time, breathe) * clamp(circle.z / 220.0, 0.0, 1.0) * (1.0 - 0.85 * calm);
     float arc = clamp(v.x / max(-v.y, circle.z * 0.25), -1.6, 1.6);
     return float3(circle.z - length(v) - wave.x, arc + wave.y, max(circle.z, 1.0));
 }
@@ -37,10 +37,9 @@ static half4 waveGlass(half4 c, float2 screen, float2 size, float d, float depth
                           generationWashBase(tintTime, tintOffset, tint, 0), waveFrost(depth));
         c.rgb *= half3(mix(float3(1.0), listeningWash(wash, tintTime), tintLevel));
     }
-    float fog = mix(0.5, 0.74, smoothstep(0.15, 0.8, depth)) * smoothstep(0.01, 0.15, depth) * amount;
+    float fog = mix(0.16, 0.26, smoothstep(0.15, 0.8, depth)) * smoothstep(0.01, 0.15, depth) * amount;
     c.rgb = mix(c.rgb, half3(washLuma) * c.a, half(fog));
-    float rise = 0.5 + 0.5 * sin(d * 0.055 + time * 2.1);
-    float glow = rise * rise * rise * exp(-d / 90.0) * (0.10 + 0.06 * breathe);
+    float glow = exp(-d / 70.0) * (0.03 + 0.12 * breathe);
     float crest = (0.08 + 0.05 * breathe) * exp(-((d - 4.0) / 9.0) * ((d - 4.0) / 9.0));
     c.rgb += half3(mix(float3(1.0), tint * tint, 0.6) * (crest + glow) * amount) * c.a;
     return c;
@@ -49,10 +48,10 @@ static half4 waveGlass(half4 c, float2 screen, float2 size, float d, float depth
 [[ stitchable ]] half4 waveLens(float2 position, SwiftUI::Layer layer, float2 size,
                                   float3 circle, float amount, float washLuma,
                                   float tintTime, float tintOffset, float tintLevel, float top,
-                                  float time, float breathe, float3 tint) {
+                                  float time, float breathe, float calm, float3 tint) {
     if (amount <= 0.001) return half4(0.0);
     float2 screen = position + float2(0.0, top);
-    float3 surface = waveSurface(screen, circle, size.x, time, breathe);
+    float3 surface = waveSurface(screen, circle, size.x, time, breathe, calm);
     float d = surface.x;
     if (d <= 0.0) return half4(0.0);
     float depth = clamp(d / surface.z, 0.0, 1.0);
@@ -69,21 +68,21 @@ static half4 waveGlass(half4 c, float2 screen, float2 size, float d, float depth
 [[ stitchable ]] half4 waveMeniscus(float2 position, SwiftUI::Layer layer, float2 size,
                                           float3 circle, float amount, float washLuma,
                                           float tintTime, float tintOffset, float tintLevel, float top,
-                                          float time, float breathe, float3 tint) {
+                                          float time, float breathe, float calm, float3 tint) {
     if (amount <= 0.001) return half4(0.0);
     float2 screen = position + float2(0.0, top);
-    float3 surface = waveSurface(screen, circle, size.x, time, breathe);
+    float3 surface = waveSurface(screen, circle, size.x, time, breathe, calm);
     float d = surface.x;
     if (d <= -1.0) return half4(0.0);
     float depth = clamp(d / surface.z, 0.0, 1.0);
     if (waveFrost(depth) >= 0.999) return half4(0.0);
 
     float bn = max(d, 0.0) / max(size.y * 0.040, 1.0);
-    float band = bn * exp(1.0 - bn);
+    float band = bn * exp(1.0 - bn) * (1.0 - 0.6 * calm);
     float2 disp;
-    disp.x = -surface.y * 42.0 * band
+    disp.x = -surface.y * 24.0 * band
            + sin(screen.y * 0.045 - time * 1.30) * 3.0 * (1.0 - band);
-    disp.y = -(26.0 + 20.0 * breathe) * band
+    disp.y = -(14.0 + 11.0 * breathe) * band
            - 7.0 * (1.0 - band) * smoothstep(0.0, 0.5, depth) * sin(time * 0.85 + screen.x * 0.010);
     disp *= amount;
 
@@ -97,8 +96,15 @@ static half4 waveGlass(half4 c, float2 screen, float2 size, float d, float depth
     return c * half(smoothstep(-1.0, 1.0, d) * amount);
 }
 
-[[ stitchable ]] half4 waveTranscriptMask(float2 position, half4 color, float2 size,
-                                                float3 circle, float time, float breathe, float amount) {
+[[ stitchable ]] half4 waveTranscript(float2 position, SwiftUI::Layer layer, float2 size,
+                                     float3 circle, float time, float breathe, float calm, float amount) {
     if (amount <= 0.001) return half4(0.0);
-    return color * half(smoothstep(0.0, 1.0, waveSurface(position, circle, size.x, time, breathe).x));
+    float3 surface = waveSurface(position, circle, size.x, time, breathe, calm);
+    float d = surface.x;
+    if (d <= 0.0) return half4(0.0);
+    float bn = d / max(size.y * 0.040, 1.0);
+    float band = bn * exp(1.0 - bn) * (1.0 - 0.6 * calm);
+    float2 disp = float2(-surface.y * 24.0 * band, -(14.0 + 11.0 * breathe) * band) * amount;
+    half4 c = layer.sample(clamp(position + disp, float2(0.5), size - float2(0.5)));
+    return c * half(smoothstep(0.0, 34.0, d) * amount);
 }

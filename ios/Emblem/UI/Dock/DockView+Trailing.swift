@@ -11,22 +11,36 @@ extension DockView {
         AnodizedSurface(shape: RoundedRectangle(cornerRadius: Self.micRadius, style: .continuous))
     }
 
+    static let lockDistance: CGFloat = 60
+
     @ViewBuilder
     var lockBadge: some View {
         if speech.phase == .held || speech.phase == .locked {
-            Image(systemName: speech.phase == .locked ? "lock.fill" : "lock.open")
+            let locked = speech.phase == .locked
+            let pull = locked ? 1 : min(1, lockPull / Self.lockDistance)
+            Image(systemName: locked ? "lock.fill" : "lock.open")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(speech.phase == .locked ? Theme.ink : Theme.inkSecondary)
-                .contentTransition(.symbolEffect(.replace))
+                .foregroundStyle(locked ? accent.glyph : Theme.inkSecondary)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .downUp)))
                 .frame(width: 36, height: 36)
-                .background(Circle().fill(Theme.card))
+                .background {
+                    Circle().fill(Theme.card)
+                    Circle().fill(accent.color).opacity(locked ? 1 : 0.35 * pull)
+                }
+                .scaleEffect(1 + 0.12 * pull * (locked ? 0 : 1))
+                .offset(y: -52 - 10 * pull * (locked ? 0 : 1))
                 .accessibilityIdentifier("voice-lock-status")
-                .accessibilityLabel(speech.phase == .locked ? "Recording locked" : "Slide up to lock")
-                .offset(y: -52)
+                .accessibilityLabel(locked ? "Recording locked" : "Slide up to lock")
                 .transition(reduceMotion
                     ? .opacity
-                    : .opacity.combined(with: .scale(scale: 0.8)))
-                .animation(.smooth(duration: 0.25), value: speech.phase)
+                    : .asymmetric(
+                        insertion: .scale(scale: 0.6).combined(with: .opacity)
+                            .combined(with: .offset(y: 10))
+                            .animation(.spring(duration: 0.34, bounce: 0.18)),
+                        removal: .scale(scale: 0.8).combined(with: .opacity)
+                            .animation(.easeOut(duration: 0.14))))
+                .animation(.interactiveSpring(duration: 0.14, extraBounce: 0), value: lockPull)
+                .animation(.spring(duration: 0.36, bounce: 0.3), value: speech.phase)
         }
     }
 
