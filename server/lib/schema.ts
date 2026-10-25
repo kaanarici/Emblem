@@ -205,7 +205,7 @@ export const blockSchema = z.discriminatedUnion("type", [
         }),
       ),
     },
-    "Mobile flow diagram from TOPOLOGY ONLY: compact 1-3 word node labels and 1-3 word edge labels, nodes + directed edges, NEVER coordinates; the client computes the layout. Use for 'how X works', processes, pipelines, system structure.",
+    "Mobile flow diagram from TOPOLOGY ONLY: compact 1-3 word node labels and 1-3 word edge labels, nodes + directed edges along one main chain (at most two edges that skip a step or loop back), NEVER coordinates; the client computes the layout. Use for 'how X works', processes, pipelines, system structure.",
   ),
   block(
     "whatIf",
