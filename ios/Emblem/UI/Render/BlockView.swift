@@ -118,10 +118,9 @@ struct ResponseSurfaceBackground: View {
     var showsPaperEdge = false
     var isFooter = false
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.calendarAgenda) private var calendarAgenda
 
     var body: some View {
-        (isFooter ? Theme.responseCanvas : calendarAgenda && surface == .paper ? .clear : surface.color)
+        (isFooter ? Theme.responseCanvas : surface.color)
             .overlay(alignment: .top) {
                 if showsPaperEdge {
                     LinearGradient(

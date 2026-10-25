@@ -11,35 +11,20 @@ extension ConversationStore {
         expansion: Bool = false,
         expansionSource: PageExpansionSource? = nil
     ) -> Bool {
-        send(prompt, expansion: expansion, expansionSource: expansionSource, calendarContext: nil)
-    }
-
-    func send(
-        _ prompt: String,
-        expansion: Bool,
-        expansionSource: PageExpansionSource?,
-        calendarContext: CalendarGenerationContext?
-    ) -> Bool {
         if let source = generationRegistry.run(for: currentPage),
            (source.historyEpoch != history.epoch || source.saveScopeID != SavedPagesStore.shared.scopeID) {
             return false
         }
-        if calendarContext == nil {
-            guard generationRegistry.canBeginOrdinary(from: currentPage) else { return false }
-        }
-        if calendarContext != nil,
-           pages.contains(where: { $0.calendarContext != nil }),
-           currentPage?.calendarContext == nil { return false }
+        guard generationRegistry.canBeginOrdinary(from: currentPage) else { return false }
         if let key = currentConversationKey,
            history.isRemoving(key) { return false }
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        let outgoing = calendarContext == nil ? attachments : []
+        let outgoing = attachments
         guard !trimmed.isEmpty || !outgoing.isEmpty else { return false }
         cancelRestore()
         automationOpenFailureID = nil
 
-        let userText = calendarContext == nil
-            ? appendingAnswers(to: trimmed, from: currentPage) : trimmed
+        let userText = appendingAnswers(to: trimmed, from: currentPage)
         let sourcePage = currentPage
         let runConversationKey = sourcePage?.conversationKey ?? UUID().uuidString
         if sourcePage?.conversationKey != nil {
@@ -68,41 +53,31 @@ extension ConversationStore {
             conversationKey: runConversationKey,
             previousPageKey: sourcePage?.isHome == false ? sourcePage?.pageKey : nil,
             parentPageKey: expansionSource?.parentPageKey,
-            sourceCardKey: expansionSource?.sourceCardKey,
-            calendarContext: calendarContext)
+            sourceCardKey: expansionSource?.sourceCardKey)
         page.isExpansion = expansion || expansionSource != nil
         page.expansionSource = expansionSource
         let appleSelection = OnDeviceModel.selection()
-        let mountBeforeContent = calendarContext == nil && pagePreviewEnabled
+        let mountBeforeContent = pagePreviewEnabled
             && appleSelection == .emblem
             && !page.isExpansion
             && dockState != .listening
         guard let run = generationRegistry.begin(
             page: page, from: sourcePage, conversationKey: runConversationKey,
             attachments: outgoing, retryAnchor: sourcePage,
-            historyEpoch: history.epoch,
-            admission: calendarContext == nil ? .ordinary : .calendar,
-            navigationPrefix: calendarContext == nil ? [] : pages)
+            historyEpoch: history.epoch)
         else { return false }
         let runID = run.id
         let session = run.session
         run.earlyPreview = mountBeforeContent
         beginUpload(outgoing, runID: runID)
-        if calendarContext == nil { attachments = [] }
+        attachments = []
         dockState = .idle
 
         if let key = expansionKey(for: page) {
             expansionPages[key] = page
         }
 
-        if calendarContext != nil {
-            forwardPages = []
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                pages.append(page)
-            }
-        } else if (sourcePage?.isHome ?? true) || expansionSource != nil || mountBeforeContent {
+        if (sourcePage?.isHome ?? true) || expansionSource != nil || mountBeforeContent {
             forwardPages = []
             withAnimation(navigationAnimation(expansion: expansionSource != nil)) {
                 pages.append(page)
@@ -271,10 +246,10 @@ extension ConversationStore {
                 sourceCardHasImage: context.page.expansionSource.map {
                     $0.card.image != nil || $0.card.imageURL != nil
                 },
-                calendarContext: context.page.calendarContext,
+                calendarEvent: context.page.expansionSource?.calendarEvent,
                 attachments: wireAttachments.isEmpty ? nil : wireAttachments,
                 location: wireLocation,
-                timezone: context.page.calendarContext?.timeZone ?? TimeZone.current.identifier,
+                timezone: TimeZone.current.identifier,
                 device: DeviceAccess.advertisedSources)
             self.startStream(request: request, runID: runID)
         }

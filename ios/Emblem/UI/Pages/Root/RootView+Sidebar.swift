@@ -15,7 +15,7 @@ extension RootView {
                 !(isHomePage && primaryDestination == nil && savedEntry == nil && savedEntitySelection == nil)
                     && !store.isEditingWriting && !primaryIsTopmost && !mapIsTopmost
                     && comparisonPresentation == nil && store.canGoForward
-                    && (primaryDestination == nil || primaryDestination == .calendar || savedEntry != nil)
+                    && (primaryDestination == nil || savedEntry != nil)
             },
             onLeft: {
                 withAnimation(UIAccessibility.isReduceMotionEnabled
@@ -25,10 +25,6 @@ extension RootView {
                     else if savedEntitySelection != nil { savedEntitySelection = nil }
                     else if savedEntry != nil {
                         if isSavedEntryRoot { returnToSaves() } else { store.goBack() }
-                    }
-                    else if primaryDestination == .calendar {
-                        if calendarIsTopmost { store.goBack(); primaryDestination = nil }
-                        else { store.goBack() }
                     }
                     else if primaryDestination != nil { primaryDestination = nil }
                     else { store.goBack() }

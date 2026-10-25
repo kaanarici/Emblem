@@ -10,7 +10,6 @@ struct CalendarBrowserView<Response: View>: View {
     @State private var isUserPaging = false
     @State private var anchor: CalendarBrowserDay?
     @State private var pager = CalendarPagerTrack()
-    @Namespace private var highlight
     private static var reach: Int { 30 }
     private static var pageGap: CGFloat { 0 }
 
@@ -33,25 +32,16 @@ struct CalendarBrowserView<Response: View>: View {
                                      anchor: anchor ?? selection.selectedDate,
                                      reach: Self.reach, onSelect: onSelect)
                 } else {
-                    weeklyStrip
+                    CalendarPeriodStrip(selection: selection, pager: pager,
+                                        anchor: anchor ?? selection.selectedDate, reach: Self.reach,
+                                        onSelect: onSelect) { pageOffset(from: $0, to: $1, in: selection) }
                 }
             }
-            .padding(.bottom, 50.0 / 3)
-            .background {
-                headerSurface.ignoresSafeArea(edges: .top)
-            }
+            .padding(.bottom, 10)
+            .background { Theme.sidebarBackground.ignoresSafeArea(edges: .top) }
             .overlay(alignment: .bottom) {
-                if colorScheme != .dark {
-                    VStack(spacing: 0) {
-                        LinearGradient(colors: [.white.opacity(0), .white.opacity(0.85)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 6)
-                        Color.white.opacity(0.85).frame(height: 1)
-                        Color.black.opacity(0.25).frame(height: 1.0 / 3)
-                    }
-                    .allowsHitTesting(false)
-                }
+                Rectangle().fill(CalendarMetrics.hairline(colorScheme)).frame(height: 0.5).allowsHitTesting(false)
             }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0 : 0.12), radius: 16, y: 8)
             .zIndex(1)
             periodPager
         }
@@ -63,8 +53,7 @@ struct CalendarBrowserView<Response: View>: View {
         let base = anchor.flatMap { $0.date(in: selection.zone) } ?? selection.selectedInstant
         return (-Self.reach...Self.reach).compactMap { offset in
             guard let instant = selection.calendar.date(
-                byAdding: selection.mode == .daily ? .day : .weekOfYear,
-                value: offset, to: base),
+                byAdding: selection.mode.component, value: offset, to: base),
                   let neighbor = try? CalendarBrowserSelection(
                     date: CalendarBrowserDay(date: instant, timeZone: selection.zone),
                     mode: selection.mode, timeZone: selection.timeZone) else { return nil }
@@ -97,10 +86,6 @@ struct CalendarBrowserView<Response: View>: View {
             CGPoint(x: geometry.contentOffset.x, y: geometry.containerSize.width)
         } action: { _, value in
             guard value.y > 0 else { return }
-            if !pager.tracking {
-                guard abs(value.x / value.y - CGFloat(Self.reach) - selectedPage) < 0.5 else { return }
-                pager.tracking = true
-            }
             pager.offset = value.x
             pager.stride = value.y
         }
@@ -110,40 +95,43 @@ struct CalendarBrowserView<Response: View>: View {
         .scrollPosition(id: $visiblePeriod, anchor: .center)
         .accessibilityIdentifier("calendar-period-pager")
         .onScrollPhaseChange { _, phase in
-            if phase == .tracking || phase == .interacting { isUserPaging = true }
-            if phase == .idle && isUserPaging {
-                isUserPaging = false
-                selectVisiblePeriod()
+            if phase == .tracking || phase == .interacting {
+                isUserPaging = true
+                pager.dragging = true
+            }
+            if phase == .idle {
+                if isUserPaging {
+                    isUserPaging = false
+                    selectVisiblePeriod()
+                }
+                pager.dragging = false
             }
         }
         .onAppear {
-            if anchor == nil {
-                anchor = selection.selectedDate
-                pager.tracking = false
-            }
+            if anchor == nil { anchor = selection.selectedDate }
         }
         .onChange(of: selection.snapshot) { old, next in
             let edge = nearEdge(next)
             guard visiblePeriod != next || edge else { return }
             if old.mode == next.mode, !edge {
-                withAnimation(.smooth(duration: 0.34)) { visiblePeriod = next }
+                withAnimation(CalendarMotion.spring) { visiblePeriod = next }
             } else {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
                     anchor = next.selectedDate
-                    pager.tracking = false
                     visiblePeriod = next
                 }
             }
         }
     }
 
-    private var selectedPage: CGFloat {
-        let base = anchor.flatMap { $0.date(in: selection.zone) } ?? selection.selectedInstant
-        let component: Calendar.Component = selection.mode == .daily ? .day : .weekOfYear
-        return CGFloat(selection.calendar.dateComponents([component], from: base, to: selection.selectedInstant)
-            .value(for: component) ?? 0)
+    private func pageOffset(from start: CalendarBrowserDay, to end: CalendarBrowserDay,
+                            in selection: CalendarBrowserSelection) -> Int? {
+        if selection.mode == .monthly { return (end.year - start.year) * 12 + end.month - start.month }
+        guard let from = start.date(in: selection.zone), let to = end.date(in: selection.zone),
+              let days = selection.calendar.dateComponents([.day], from: from, to: to).day else { return nil }
+        return selection.mode == .daily ? days : days / 7
     }
 
     private func nearEdge(_ period: CalendarBrowserSnapshot) -> Bool {
@@ -156,25 +144,11 @@ struct CalendarBrowserView<Response: View>: View {
               period.mode == selection.mode, period.timeZone == selection.timeZone else { return }
         let accepted = selection.propose({ candidate in
             if candidate.mode == .daily { return try candidate.chooseDay(period.selectedDate) }
-            guard let instant = period.selectedDate.date(in: candidate.zone),
-                  let days = candidate.calendar.dateComponents(
-                    [.day], from: candidate.selectedInstant, to: instant).day
+            guard let offset = pageOffset(from: candidate.selectedDate, to: period.selectedDate, in: candidate)
             else { throw CalendarBrowserSelectionError.invalidDate }
-            return try candidate.chooseWeek(offset: days / 7)
+            return try candidate.choosePeriod(offset: offset)
         }, accepting: onSelect)
         if !accepted { visiblePeriod = selection.snapshot }
-    }
-
-    private var headerSurface: Color {
-        colorScheme == .dark ? Theme.surface : Color(white: 0.98)
-    }
-
-    private var todayRed: Color {
-        colorScheme == .dark ? .red : Color(.sRGB, red: 1, green: 0, blue: 0)
-    }
-
-    private var selectedPillFill: Color {
-        colorScheme == .dark ? Theme.ink.opacity(0.12) : Theme.surface
     }
 
     private var header: some View {
@@ -183,10 +157,16 @@ struct CalendarBrowserView<Response: View>: View {
                 .accessibilityLabel("Menu")
             Spacer(minLength: 12)
             HStack(spacing: 16) {
-                Button { selection.propose({ $0.today() }, accepting: onSelect) } label: {
+                Button {
+                    if selection.selectedDate == CalendarBrowserDay(date: CalendarAgendaFeed.shared.now, timeZone: selection.zone) {
+                        CalendarAgendaFeed.shared.nowRequest += 1
+                    } else {
+                        selection.propose({ $0.today() }, accepting: onSelect)
+                    }
+                } label: {
                     ZStack {
                         CalendarTodayOutline().stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)).frame(width: 24, height: 24)
-                        Text(String(CalendarBrowserDay(date: .now, timeZone: selection.zone).day))
+                        Text(String(CalendarBrowserDay(date: CalendarAgendaFeed.shared.now, timeZone: selection.zone).day))
                             .font(.system(size: 11, weight: .semibold)).offset(y: 3)
                     }.frame(width: 38, height: 36)
                 }
@@ -202,6 +182,9 @@ struct CalendarBrowserView<Response: View>: View {
                     Button { selection.propose({ $0.chooseMode(.weekly) }, accepting: onSelect) } label: {
                         Label { Text("Weekly") } icon: { CalendarMenuGlyph.image(.weekly) }
                     }
+                    Button { selection.propose({ $0.chooseMode(.monthly) }, accepting: onSelect) } label: {
+                        Label { Text("Monthly") } icon: { CalendarMenuGlyph.image(.monthly) }
+                    }
                 } label: {
                     Image(systemName: "ellipsis").font(.system(size: 20, weight: .medium))
                         .frame(width: 38, height: 36)
@@ -214,47 +197,7 @@ struct CalendarBrowserView<Response: View>: View {
             .glassEffect(.regular.interactive(), in: Capsule())
         }
         .overlay { Text("Calendar").font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader).allowsHitTesting(false) }
-        .padding(.horizontal, 20).padding(.bottom, 55.0 / 3)
-    }
-
-    private var weeklyStrip: some View {
-        HStack(spacing: 0) {
-            ForEach(-1...1, id: \.self) { offset in
-                let date = selection.calendar.date(byAdding: .weekOfYear, value: offset, to: selection.selectedInstant)!
-                let interval = selection.calendar.dateInterval(of: .weekOfYear, for: date)!
-                let start = CalendarBrowserDay(date: interval.start, timeZone: selection.zone)
-                let last = CalendarBrowserDay(date: interval.end.addingTimeInterval(-1), timeZone: selection.zone)
-                Button {
-                    selection.propose({ try $0.chooseWeek(offset: offset) }, accepting: onSelect)
-                } label: {
-                    VStack(spacing: 5) {
-                        Text("Week \(selection.calendar.component(.weekOfYear, from: date))")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(offset == 0 ? todayRed : Theme.inkSecondary)
-                        Text(weekRange(start, last)).font(.system(size: 16, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity).frame(height: 140.0 / 3)
-                    .background {
-                        if offset == 0 {
-                            RoundedRectangle(cornerRadius: 16).fill(selectedPillFill)
-                                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
-                                .matchedGeometryEffect(id: "selected-week", in: highlight)
-                        }
-                    }
-                    .padding(.horizontal, 4)
-                    .frame(height: 158.0 / 3)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.pressable)
-                .accessibilityLabel("Week of " + selection.text(start, format: "MMMM d, yyyy"))
-                .accessibilityAddTraits(offset == 0 ? .isSelected : [])
-                .accessibilityIdentifier("calendar-week-\(offset)")
-            }
-        }
-    }
-
-    private func weekRange(_ start: CalendarBrowserDay, _ last: CalendarBrowserDay) -> String {
-        let tail = start.month == last.month ? String(last.day) : selection.text(last, format: "MMM d")
-        return selection.text(start, format: "MMM d") + "–" + tail
+        .padding(.horizontal, 20).padding(.bottom, 12)
     }
 }
 
@@ -286,12 +229,12 @@ private struct CalendarTodayOutline: Shape {
 }
 
 private enum CalendarMenuGlyph {
-    enum Kind { case today, daily, weekly }
+    enum Kind { case today, daily, weekly, monthly }
 
     @MainActor static func image(_ kind: Kind) -> Image {
         let renderer = ImageRenderer(content: Outline(kind: kind)
             .stroke(style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
-            .overlay { if kind == .weekly { Bar() } }
+            .overlay { if kind == .weekly { Bar() } else if kind == .monthly { Dots() } }
             .frame(width: 19, height: 19).padding(0.8))
         renderer.scale = 3
         guard let image = renderer.uiImage else { return Image(systemName: "calendar") }
@@ -303,6 +246,18 @@ private enum CalendarMenuGlyph {
             GeometryReader { proxy in
                 Capsule().frame(width: proxy.size.width * 0.58, height: 2.4)
                     .position(x: proxy.size.width / 2, y: proxy.size.height * 0.62)
+            }
+        }
+    }
+
+    private struct Dots: View {
+        var body: some View {
+            GeometryReader { proxy in
+                ForEach(0..<6, id: \.self) { index in
+                    Circle().frame(width: 2.6, height: 2.6)
+                        .position(x: proxy.size.width * (0.3 + 0.2 * CGFloat(index % 3)),
+                                  y: proxy.size.height * (0.52 + 0.2 * CGFloat(index / 3)))
+                }
             }
         }
     }

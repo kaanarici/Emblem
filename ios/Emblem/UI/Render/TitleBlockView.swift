@@ -75,29 +75,9 @@ struct TitleBlockView: View {
             }
 
             if let actions = block.actions, !actions.isEmpty {
-                HStack(spacing: 12) {
-                    ForEach(actions, id: \.self) { action in
-                        Button {
-                            guard blockInteraction.allowsActivation else { return }
-                            performAction(action)
-                        } label: {
-                            HStack(spacing: 7) {
-                                GlyphImage(symbol: action.sfSymbol ?? "play.fill", size: 18, weight: .semibold)
-                                Text(action.label)
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    .minimumScaleFactor(0.8)
-                            }
-                            .foregroundStyle(Theme.ink)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .blockActivationControl()
-                        .buttonStyle(.pressable)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
+                ViewThatFits(in: .horizontal) {
+                    EqualWidthRow(spacing: 12) { ForEach(actions, id: \.self) { actionButton($0, wraps: false) } }
+                    VStack(spacing: 10) { ForEach(actions, id: \.self) { actionButton($0, wraps: true) } }
                 }
                 .padding(.top, 12)
             }
@@ -105,6 +85,29 @@ struct TitleBlockView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, Theme.contentMargin)
         .onAppear(perform: startSweep)
+    }
+
+    private func actionButton(_ action: Action, wraps: Bool) -> some View {
+        Button {
+            guard blockInteraction.allowsActivation else { return }
+            performAction(action)
+        } label: {
+            HStack(spacing: 7) {
+                GlyphImage(symbol: action.sfSymbol ?? "play.fill", size: 18, weight: .semibold)
+                Text(action.label)
+                    .font(.system(size: 16, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: !wraps, vertical: true)
+            }
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .blockActivationControl()
+        .buttonStyle(.pressable)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var eventMetaRow: some View {
@@ -266,5 +269,25 @@ private struct TagFlowLayout: Layout {
         var items: [Item]
         var width: CGFloat
         var height: CGFloat
+    }
+}
+
+private struct EqualWidthRow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let gaps = spacing * CGFloat(max(0, subviews.count - 1))
+        return CGSize(width: proposal.width ?? (sizes.map(\.width).max() ?? 0) * CGFloat(subviews.count) + gaps,
+                      height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let gaps = spacing * CGFloat(max(0, subviews.count - 1))
+        let width = (bounds.width - gaps) / CGFloat(max(1, subviews.count))
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (width + spacing), y: bounds.minY),
+                          proposal: ProposedViewSize(width: width, height: bounds.height))
+        }
     }
 }

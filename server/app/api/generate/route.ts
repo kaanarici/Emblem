@@ -12,12 +12,13 @@ import {
 import { conversationMayNeedWeather } from "@/lib/requestIntent";
 import { api } from "@/convex/_generated/api";
 import { articleGroundingFrom, storedGenerationSources } from "@/lib/articleGrounding";
-import { selectedCalendarEvent, type SelectedCalendarEvent } from "@/lib/calendarEventDrillIn";
-import { authFailure, requestAuth } from "@/lib/auth";
 import {
-  calendarGenerationContextSchema,
-  validateCalendarGenerationInput,
-} from "@/lib/calendarGenerationContext";
+  calendarEventGrounding,
+  calendarEventSchema,
+  selectedCalendarEvent,
+  type SelectedCalendarEvent,
+} from "@/lib/calendarEventDrillIn";
+import { authFailure, requestAuth } from "@/lib/auth";
 import {
   ANONYMOUS_CONVERSATION_KEY,
   finishGenerationFailure,
@@ -73,7 +74,7 @@ const requestSchema = z
 
     sourceCardHasImage: z.boolean().optional(),
     drillInPresentation: z.enum(["normal", "article", "weather"]).optional(),
-    calendarContext: calendarGenerationContextSchema.optional(),
+    calendarEvent: calendarEventSchema.optional(),
     savedSelection: savedSelectionSchema.optional(),
     attachments: z
       .array(
@@ -115,6 +116,9 @@ const requestSchema = z
       drillInPresentation === undefined || Boolean(parentPageKey) || Boolean(savedSelection),
     { message: "drillInPresentation requires a card drill-in" },
   )
+  .refine(({ calendarEvent, parentPageKey }) => !calendarEvent || Boolean(parentPageKey), {
+    message: "calendarEvent requires a card drill-in",
+  })
   .superRefine((value, context) => {
     const selection = value.savedSelection;
     if (!selection) return;
@@ -124,7 +128,7 @@ const requestSchema = z
       !value.messages[0].content.trim() ||
       (value.attachments?.length ?? 0) !== 0 ||
       value.location !== undefined ||
-      value.calendarContext !== undefined ||
+      value.calendarEvent !== undefined ||
       value.memory !== false ||
       (value.memoryContext?.length ?? 0) !== 0 ||
       (value.parentPageKey !== undefined && value.parentPageKey !== selection.parentPageKey) ||
@@ -366,7 +370,7 @@ export async function POST(req: Request) {
   try {
     const raw = await readGenerationBody(req);
     if (raw instanceof Response) return raw;
-    input = requestSchema.parse(validateCalendarGenerationInput(raw));
+    input = requestSchema.parse(raw);
   } catch {
     return jsonResponse({ error: "invalid generation request", code: "invalid_request" }, 400);
   }
@@ -380,13 +384,12 @@ export async function POST(req: Request) {
   const {
     messages,
     attachments,
-    calendarContext,
     parentPageKey,
     drillInPresentation,
     sourceCardTitle,
     savedSelection,
+    timezone,
   } = input;
-  const timezone = calendarContext?.timeZone ?? input.timezone;
   const homeControl = input.device?.includes("home") ?? false;
 
   const unreadable = attachments?.find(
@@ -397,12 +400,6 @@ export async function POST(req: Request) {
       `I couldn't read text from ${unreadable.name}. Try a text-based PDF or plain-text file.`,
       "unreadable_attachment",
       false,
-    );
-  }
-  if (calendarContext && serviceCall) {
-    return jsonResponse(
-      { error: "Calendar selection requires an interactive request", code: "invalid_request" },
-      400,
     );
   }
 
@@ -455,7 +452,7 @@ export async function POST(req: Request) {
     const [allowed, personal, parentEvidence] = await Promise.all([
       admitMetered(req, METERED_ROUTES.generate, auth),
       savedSelection ? null : personalContext(interactive, interactiveMemory),
-      !savedSelection && evidencePageKey && input.conversationKey
+      !savedSelection && !input.calendarEvent && evidencePageKey && input.conversationKey
         ? parentPageEvidence(interactive, {
             conversationKey: input.conversationKey,
             pageKey: evidencePageKey,
@@ -489,6 +486,7 @@ export async function POST(req: Request) {
         savedSelection.sourceCardKey,
       )
     : parent.hotelSelection;
+  const calendarEvent = input.calendarEvent ?? parent.calendarEvent;
   const scope = serviceCall
     ? { ownerKey: service.ownerKey, sources: service.sources }
     : { ownerKey, sources: undefined };
@@ -503,7 +501,6 @@ export async function POST(req: Request) {
     );
     return createStream({
       previewEnabled: req.headers.get("X-Emblem-Preview") === "v1",
-      calendarContext,
       messages: withRequestContext(
         savedSelection ? savedSelectionMessages(savedSelection, messages[0]!.content) : messages,
         attachments,
@@ -521,10 +518,10 @@ export async function POST(req: Request) {
         articleLead,
         normalDrillIn: Boolean(parentPageKey) && drillInPresentation === "normal",
         articleTitle: sourceCardTitle,
-        articleNeedsCover:
-          articleLead && input.sourceCardHasImage === false && !parent.calendarEvent,
-        calendarEvent: articleLead ? parent.calendarEvent : undefined,
-        articleContext: parent.context,
+        articleNeedsCover: articleLead && input.sourceCardHasImage === false && !calendarEvent,
+        calendarEvent: articleLead ? calendarEvent : undefined,
+        articleContext:
+          parent.context ?? (input.calendarEvent && calendarEventGrounding(input.calendarEvent)),
         articleSources: parent.sources,
         hotelSelection,
       },

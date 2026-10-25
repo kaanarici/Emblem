@@ -73,7 +73,7 @@ extension ConversationStore {
             sourceCardKey: entity.origin.sourceCardKey, card: entity.card)
         guard let run = generationRegistry.begin(page: page, from: currentPage,
             conversationKey: conversationKey, attachments: [], retryAnchor: currentPage,
-            historyEpoch: history.epoch, admission: .ordinary) else { return nil }
+            historyEpoch: history.epoch) else { return nil }
         let runID = run.id
         cancelRestore()
         VoiceOutput.shared.stop()

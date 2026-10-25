@@ -277,6 +277,94 @@ function presentCalendar(value: unknown): PresentedResult {
   };
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/i;
+const MAX_EVENT_ATTENDEES = 12;
+
+export type CalendarEventRow = {
+  id: string;
+  iCalUID: string | null;
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  location: string | null;
+  calendar: string | null;
+  color: string | null;
+  url: string | null;
+  attendees: string[];
+};
+
+function hexColor(value: unknown): string | null {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : null;
+}
+
+function eventInstant(value: unknown): string | undefined {
+  const candidate = text(value, 64);
+  if (!candidate || !INSTANT.test(candidate)) return undefined;
+  const time = Date.parse(candidate);
+  return Number.isNaN(time) ? undefined : new Date(time).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function eventSpan(record: Record<string, unknown>) {
+  const start = asRecord(record.start);
+  const end = asRecord(record.end);
+  const startDate = text(start?.date, 32);
+  const endDate = text(end?.date, 32);
+  if (startDate && endDate && DATE.test(startDate) && DATE.test(endDate)) {
+    return { start: startDate, end: endDate, allDay: true };
+  }
+  const startAt = eventInstant(start?.dateTime);
+  const endAt = eventInstant(end?.dateTime);
+  return startAt && endAt ? { start: startAt, end: endAt, allDay: false } : null;
+}
+
+function calendarEventRow(
+  value: unknown,
+  calendar: string | null,
+  calendarColor: string | null,
+): CalendarEventRow | null {
+  const record = asRecord(value);
+  const id = text(record?.id, 256);
+  const span = record && eventSpan(record);
+  if (!record || !id || !span || record.status === "cancelled") return null;
+  const attendees = Array.isArray(record.attendees)
+    ? record.attendees.flatMap((attendee) => {
+        const person = asRecord(attendee);
+        return text(person?.displayName, 80) ?? text(person?.email, 80) ?? [];
+      })
+    : [];
+  return {
+    id,
+    iCalUID: text(record.iCalUID, 512) ?? null,
+    title: text(record.summary, 200) ?? "(No title)",
+    ...span,
+    location: text(record.location, 200) ?? null,
+    calendar,
+    color: hexColor(record.backgroundColor) ?? calendarColor,
+    url: calendarLink(record.htmlLink) ?? null,
+    attendees: attendees.slice(0, MAX_EVENT_ATTENDEES),
+  };
+}
+
+export function presentCalendarEvents(value: unknown): {
+  calendar: string | null;
+  events: CalendarEventRow[];
+  nextPageToken?: string;
+} {
+  const data = asRecord(asRecord(value)?.data);
+  const calendar = text(data?.summary, 200) ?? null;
+  const calendarColor = hexColor(data?.backgroundColor);
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return {
+    calendar,
+    events: items.flatMap((item) => calendarEventRow(item, calendar, calendarColor) ?? []),
+    ...(typeof data?.nextPageToken === "string" && data.nextPageToken
+      ? { nextPageToken: data.nextPageToken }
+      : {}),
+  };
+}
+
 export function presentConnectorResult(toolName: string, value: unknown): PresentedResult {
   if (toolName === "GMAIL_FETCH_EMAILS" || toolName === "GMAIL_FETCH_MESSAGE_BY_THREAD_ID") {
     return presentGmailMessages(value);

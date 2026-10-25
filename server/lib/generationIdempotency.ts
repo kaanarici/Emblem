@@ -1,6 +1,6 @@
 import { logError } from "./log";
 import { savedSelectionSchema, type SavedSelection } from "./savedSelection";
-import type { CalendarGenerationContext } from "./calendarGenerationContext";
+import type { SelectedCalendarEvent } from "./calendarEventDrillIn";
 import type { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -43,7 +43,7 @@ type FingerprintInput = {
   sourceCardKey?: string;
   sourceCardTitle?: string;
   drillInPresentation?: "normal" | "article" | "weather";
-  calendarContext?: CalendarGenerationContext;
+  calendarEvent?: SelectedCalendarEvent;
   attachments?: {
     kind: string;
     name: string;
@@ -93,11 +93,9 @@ export function generationFingerprint(input: FingerprintInput): string {
     hashField(hash, "drill-in-presentation");
     hashField(hash, input.drillInPresentation);
   }
-  if (input.calendarContext !== undefined) {
-    hashField(hash, "calendar-context-v1");
-    hashField(hash, input.calendarContext.date);
-    hashField(hash, input.calendarContext.timeZone);
-    hashField(hash, input.calendarContext.mode);
+  if (input.calendarEvent !== undefined) {
+    hashField(hash, "calendar-event-v1");
+    hashField(hash, JSON.stringify(input.calendarEvent));
   }
   hashField(hash, "messages");
   hashField(hash, String(input.messages.length));

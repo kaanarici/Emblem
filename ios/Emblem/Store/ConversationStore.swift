@@ -60,7 +60,6 @@ final class ConversationStore {
     var isGenerating: Bool { generationSession.isGenerating }
     var isGenerationActive: Bool { generationRegistry.isActive || idleGenerationSession.isActive }
     var isExpansionGeneration: Bool { generationSession.context?.page.isExpansion == true }
-    var isCalendarGeneration: Bool { generationSession.isActive && generationSession.context?.page.calendarContext != nil }
     var isPresentingEarlyServerPreview: Bool {
         guard isGenerating, let context = generationSession.context else { return false }
         return earlyPreviewRunID == context.runID
@@ -73,7 +72,7 @@ final class ConversationStore {
     var pendingPresentationSourcePage: GeneratedPage? {
         guard let context = generationSession.context, context.isPending,
               context.saveScopeID == SavedPagesStore.shared.scopeID,
-              !context.page.isExpansion, context.page.calendarContext == nil,
+              !context.page.isExpansion,
               pages.last === context.page,
               let source = context.retryAnchorPage,
               pages.contains(where: { $0 === source }) else { return nil }

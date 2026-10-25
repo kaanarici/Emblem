@@ -1,11 +1,17 @@
+import { z } from "zod";
 import type { Block } from "./schema";
 
-export type SelectedCalendarEvent = {
-  title: string;
-  timeRange: string;
-  place?: string;
-  dayLabel: string;
-};
+export const calendarEventSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    dayLabel: z.string().trim().min(1).max(80),
+    timeRange: z.string().trim().min(1).max(80),
+    place: z.string().trim().max(200).optional(),
+    attendees: z.array(z.string().trim().max(80)).max(12).optional(),
+  })
+  .strict();
+
+export type SelectedCalendarEvent = z.infer<typeof calendarEventSchema>;
 
 const EVENT_OBJECTS: [RegExp, string][] = [
   [/\b(flights?|fly|flying|airport|boarding|layover)\b/, "airplane"],
@@ -78,6 +84,12 @@ export function selectedCalendarEvent(
       };
     }
   }
+}
+
+export function calendarEventGrounding(event: SelectedCalendarEvent): string {
+  const attendees = event.attendees?.filter(Boolean).join(", ");
+  const facts = [event.dayLabel, event.timeRange, event.place, attendees && `with ${attendees}`];
+  return `SELECTED: ${event.title}: ${facts.filter(Boolean).join(" · ")}`;
 }
 
 export function withCalendarEventIcon(blocks: Block[], event: SelectedCalendarEvent): Block[] {

@@ -10,6 +10,7 @@ public struct PageExpansionSource {
     public let sourceCardKey: String
     public let card: CardCarousel.Card
     public var contentStyle: ContentStyle = .article
+    public var calendarEvent: CalendarEventDetails?
 
     public var transitionID: String {
         "\(parentPageID.uuidString):\(sourceCardKey)"
@@ -21,12 +22,14 @@ public struct PageExpansionSource {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    public init(parentPageID: UUID, parentPageKey: String, sourceCardKey: String, card: CardCarousel.Card, contentStyle: ContentStyle = .article) {
+    public init(parentPageID: UUID, parentPageKey: String, sourceCardKey: String, card: CardCarousel.Card,
+                contentStyle: ContentStyle = .article, calendarEvent: CalendarEventDetails? = nil) {
         self.parentPageID = parentPageID
         self.parentPageKey = parentPageKey
         self.sourceCardKey = sourceCardKey
         self.card = card
         self.contentStyle = contentStyle
+        self.calendarEvent = calendarEvent
     }
 }
 
@@ -50,7 +53,6 @@ public final class GeneratedPage: Identifiable {
     public let parentPageKey: String?
     public let sourceCardKey: String?
     public let prompt: String
-    public let calendarContext: CalendarGenerationContext?
     public let conversationKey: String?
     public var blocks: [Block] = []
     public var activities: [SourceActivity] = []
@@ -199,7 +201,6 @@ public final class GeneratedPage: Identifiable {
         previousPageKey: String? = nil,
         parentPageKey: String? = nil,
         sourceCardKey: String? = nil,
-        calendarContext: CalendarGenerationContext? = nil,
         runtimeReplacementAncestors: Set<UUID> = []
     ) {
         let id = UUID()
@@ -210,7 +211,6 @@ public final class GeneratedPage: Identifiable {
         self.parentPageKey = parentPageKey
         self.sourceCardKey = sourceCardKey
         self.prompt = prompt
-        self.calendarContext = calendarContext
         self.isHome = isHome
         self.conversationKey = conversationKey
     }

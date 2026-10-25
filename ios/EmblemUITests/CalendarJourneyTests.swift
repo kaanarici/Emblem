@@ -1,24 +1,97 @@
 import XCTest
 
 final class CalendarJourneyTests: JourneyTestCase {
-    func testCalendarPagesToThePreviousDayAndBack() throws {
-        let server = try StubServer(replies: ["calendardaily"])
+    func testGoogleOnlyEventsShowAndPageByDay() throws {
+        let start = Calendar.current.startOfDay(for: Date())
+        let at = { (days: Int, hour: Int) in start.addingTimeInterval(Double(days * 86_400 + hour * 3_600)) }
+        let server = try StubServer(google: [
+            .init(title: "Design review", start: Date().addingTimeInterval(-600)),
+            .init(title: "Dentist", start: at(1, 10)),
+            .init(title: "Coffee with Ana", start: at(-1, 15), minutes: 30),
+        ])
+        app.resetAuthorizationStatus(for: .calendar)
+        app.resetAuthorizationStatus(for: .reminders)
         launch(server)
 
         tap(app.buttons["home-calendar"], timeout: 10)
-        answerLocationPrompt()
-        XCTAssertTrue(app.staticTexts["Morning run club"].waitForExistence(timeout: 15))
-        let today = day(offset: 0), yesterday = day(offset: -1)
-        XCTAssertTrue(today.waitForExistence(timeout: 5))
-        XCTAssertTrue(today.isSelected)
-
-        flick(towardPrevious: true)
-        XCTAssertTrue(yesterday.waitForExistence(timeout: 5))
-        expectSelected(yesterday)
-        XCTAssertTrue(app.staticTexts["Morning run club"].waitForExistence(timeout: 15))
+        XCTAssertTrue(googleEvent(0).waitForExistence(timeout: 10))
+        XCTAssertFalse(element("calendar-notice").exists)
+        XCTAssertTrue(day(offset: 0).isSelected)
 
         flick(towardPrevious: false)
-        expectSelected(today)
+        expectSelected(day(offset: 1))
+        XCTAssertTrue(googleEvent(1).waitForExistence(timeout: 5))
+
+        flick(towardPrevious: true)
+        flick(towardPrevious: true)
+        expectSelected(day(offset: -1))
+        XCTAssertTrue(googleEvent(2).waitForExistence(timeout: 5))
+
+        tap(app.buttons["calendar-go-to-today"])
+        expectSelected(day(offset: 0))
+        XCTAssertTrue(googleEvent(0).waitForExistence(timeout: 5))
+    }
+
+    func testAddingAnEventFromTheDockSavesItToTheCalendar() throws {
+        let server = try StubServer()
+        app.resetAuthorizationStatus(for: .calendar)
+        app.resetAuthorizationStatus(for: .reminders)
+        launch(server)
+
+        tap(app.buttons["home-calendar"], timeout: 10)
+        allowCalendarAndReminders()
+        send("Lunch with Sam tomorrow at 1pm")
+        expectSelected(day(offset: 1))
+        let title = element("calendar-draft-title")
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Lunch with Sam")
+
+        tap(element("calendar-draft-save"))
+        XCTAssertTrue(text(containing: "Added Lunch with Sam tomorrow at 1 PM").waitForExistence(timeout: 5))
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'calendar-event-' AND label CONTAINS 'Lunch with Sam'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+
+        tap(app.buttons["Undo"])
+        XCTAssertTrue(row.waitForNonExistence(timeout: 5))
+    }
+
+    func testAddingAToDoAndCheckingItOff() throws {
+        let server = try StubServer()
+        app.resetAuthorizationStatus(for: .calendar)
+        app.resetAuthorizationStatus(for: .reminders)
+        launch(server)
+
+        tap(app.buttons["home-calendar"], timeout: 10)
+        allowCalendarAndReminders()
+        tap(app.buttons["Add to-do"])
+        tap(element("calendar-draft-title"))
+        let name = "Call the bank \(Int.random(in: 1_000...9_999))"
+        app.typeText(name + "\n")
+        tap(element("calendar-draft-save"))
+        XCTAssertTrue(text(containing: "Added \(name) today").waitForExistence(timeout: 5))
+
+        let todo = app.buttons[name]
+        XCTAssertTrue(todo.waitForExistence(timeout: 5))
+        XCTAssertEqual(todo.value as? String, "Not done")
+        tap(todo)
+        expectValue(todo, "Done")
+    }
+
+    private func allowCalendarAndReminders() {
+        tap(onScreen("calendar-notice-action"))
+        allowSystemAlert()
+        allowSystemAlert()
+        XCTAssertTrue(element("calendar-notice").waitForNonExistence(timeout: 5))
+    }
+
+    private func onScreen(_ identifier: String) -> XCUIElement {
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 8))
+        return matches.allElementsBoundByIndex.first(where: \.isHittable) ?? matches.firstMatch
+    }
+
+    private func googleEvent(_ index: Int) -> XCUIElement {
+        element("calendar-event-google:sam@example.com:g\(index)")
     }
 
     private func day(offset: Int) -> XCUIElement {
@@ -31,6 +104,11 @@ final class CalendarJourneyTests: JourneyTestCase {
     private func expectSelected(_ day: XCUIElement) {
         let selected = expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: day)
         wait(for: [selected], timeout: 5)
+    }
+
+    private func expectValue(_ element: XCUIElement, _ value: String) {
+        let matched = expectation(for: NSPredicate(format: "value == %@", value), evaluatedWith: element)
+        wait(for: [matched], timeout: 5)
     }
 
     private func flick(towardPrevious: Bool) {

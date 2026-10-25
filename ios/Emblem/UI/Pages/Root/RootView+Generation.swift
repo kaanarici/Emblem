@@ -6,7 +6,7 @@ extension RootView {
     func handleGenerationChange(isGenerating: Bool) {
         if isGenerating {
             if primaryDestination == .saves, savedEntry == nil { primaryDestination = nil }
-            if store.isExpansionGeneration || store.isCalendarGeneration {
+            if store.isExpansionGeneration {
                 generationBackdrop = nil
                 reveal = nil
                 heldChromePage = nil

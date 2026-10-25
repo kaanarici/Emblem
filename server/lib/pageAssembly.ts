@@ -41,7 +41,6 @@ type PageAssemblyContext = {
     calendarEvent?: SelectedCalendarEvent;
   };
   articleLead: boolean;
-  requiredInputOnly?: boolean;
   homeControl?: boolean;
   messages: { role: "user" | "assistant"; content: string }[];
   weatherPayloads: WeatherPayload[];
@@ -59,7 +58,6 @@ export function createPageAssembly({
   persist,
   homeControl = false,
   articleLead,
-  requiredInputOnly = false,
   messages,
   weatherPayloads,
   sources,
@@ -150,7 +148,6 @@ export function createPageAssembly({
   ) {
     const finalized = finalizePagePlan(withVerifiedWeather(page, weatherPayloads), finish, {
       articleLead,
-      requiredInputOnly,
       articleTitle: persist.articleTitle,
       explanationIntent: requestsExplanation(persist.prompt),
     });

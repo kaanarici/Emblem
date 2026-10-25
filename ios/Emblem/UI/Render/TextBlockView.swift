@@ -4,7 +4,6 @@ import EmblemCore
 struct TextBlockView: View {
     let block: TextBlock
     @Environment(\.renderedPage) private var renderedPage
-    @Environment(\.calendarAgenda) private var calendarAgenda
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.responseRevealTiming) private var responseRevealTiming
@@ -17,7 +16,6 @@ struct TextBlockView: View {
     @State private var markerBottom: CGFloat?
     @State private var markerLineWidth: CGFloat = 0
     @State private var markerPhraseWidths: [MarkerPhraseKey: CGFloat] = [:]
-    @State private var sweep = TextSweep.done
 
     private struct MarkerPhraseKey: Hashable {
         let text: AttributedString
@@ -94,7 +92,6 @@ struct TextBlockView: View {
         let alreadyPresented = renderedPage?.hasPresentedHighlight(for: block) == true &&
             (!currentPlan || (!markerRevealed && markerFirstPresentation != true))
         return TextMarkerRenderer(
-            sweep: sweep,
             elapsed: reduceMotion || alreadyPresented ? markerDuration : currentPlan ? markerElapsed : 0,
             color: colorScheme == .dark
                 ? Color(red: 0.60, green: 0.48, blue: 0.02).opacity(0.65)
@@ -127,7 +124,6 @@ struct TextBlockView: View {
                    abs(bottom - (markerBottom ?? -.infinity)) > 24 { markerBottom = bottom }
             }
             .task(id: markerSchedule) { await revealMarker() }
-            .onAppear(perform: startSweep)
             .onDisappear {
                 if !block.highlightRanges(in: body_).isEmpty {
                     _ = renderedPage?.claimHighlightReveal(for: block)
@@ -135,21 +131,6 @@ struct TextBlockView: View {
                     updateMarker(animation: nil)
                 }
             }
-    }
-
-    private func startSweep() {
-        guard calendarAgenda, !reduceMotion, let page = renderedPage,
-              TextSweep.claim(page: page.id, block: block.id) else { return }
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { sweep = 0 }
-        withAnimation(.linear(duration: TextSweep.duration)) {
-            sweep = TextSweep.duration
-        } completion: {
-            var settle = Transaction(animation: nil)
-            settle.disablesAnimations = true
-            withTransaction(settle) { sweep = TextSweep.done }
-        }
     }
 
     private func revealMarker() async {
@@ -210,7 +191,6 @@ struct TextBlockView: View {
                 .background { if usesAtomicHighlights { markerPhraseMeasurements } }
                 .padding(.horizontal, pageMargin)
                 .padding(.top, renderedPage?.isHome == true ? 0 : -2 / 3)
-                .padding(.bottom, calendarAgenda ? 23 : 0)
         } else {
             markedText
                 .font(font)
@@ -262,7 +242,6 @@ private struct TextMarkerAttribute: TextAttribute {
 @MainActor
 enum TextSweep {
     nonisolated static let done = 1_000.0
-    nonisolated static let duration = 1.0
     nonisolated static let lineStagger = 0.1
     nonisolated static let lineSweep = 0.2
     nonisolated static let fade = 0.18
@@ -281,18 +260,15 @@ enum TextSweep {
 private struct TextMarkerRenderer: TextRenderer {
     static let wipe = 0.25
     static let stagger = 0.06
-    var sweep: Double = TextSweep.done
     var elapsed: Double
     var color: Color
-    var animatableData: AnimatablePair<Double, Double> {
-        get { AnimatablePair(elapsed, sweep) }
-        set { elapsed = newValue.first; sweep = newValue.second }
+    var animatableData: Double {
+        get { elapsed }
+        set { elapsed = newValue }
     }
 
     func draw(layout: Text.Layout, in context: inout GraphicsContext) {
-        let sweeping = sweep < TextSweep.done
-        let width = layout.map { $0.typographicBounds.rect.maxX }.max() ?? 1
-        for (lineIndex, line) in layout.enumerated() {
+        for line in layout {
             var bands: [(rect: CGRect, order: Int)] = []
             for run in line {
                 guard let marker = run[TextMarkerAttribute.self] else { continue }
@@ -314,18 +290,7 @@ private struct TextMarkerRenderer: TextRenderer {
                     width: rect.width * progress, height: rect.height)))
                 reveal.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(color))
             }
-            guard sweeping else {
-                context.draw(line)
-                continue
-            }
-            for run in line {
-                for slice in run {
-                    let x = slice.typographicBounds.rect.minX
-                    var glyph = context
-                    glyph.opacity = TextSweep.opacity(at: sweep, line: lineIndex, x: x, width: width)
-                    glyph.draw(slice)
-                }
-            }
+            context.draw(line)
         }
     }
 }

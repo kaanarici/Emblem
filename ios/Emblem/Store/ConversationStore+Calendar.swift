@@ -175,47 +175,17 @@ extension ConversationStore {
 
 extension ConversationStore {
     @discardableResult
-    func sendCalendar(_ prompt: String, context: CalendarGenerationContext) -> Bool {
-        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return send(prompt, expansion: false, expansionSource: nil, calendarContext: context)
-    }
-
-    typealias CalendarPageSelection = GenerationRegistry.CalendarPageSelection
-
-    func selectCalendarPage(context: CalendarGenerationContext, from source: GeneratedPage,
-                            expectedScope: UUID) -> CalendarPageSelection {
-        guard currentPage === source, SavedPagesStore.shared.scopeID == expectedScope,
-              let key = source.conversationKey, !history.isRemoving(key) else { return .rejected }
-        switch generationRegistry.calendarSelectionPlan(context: context, from: source,
-                    navigationPages: pages, historyEpoch: history.epoch, expectedScope: expectedScope) {
-        case .rejected: return .rejected
-        case .notKnown: return .notKnown
-        case .selected(_, let targetPages):
-            guard let target = targetPages.last else { return .rejected }
-            if currentPage !== target { VoiceOutput.shared.stop() }
+    func openCalendarEvent(_ source: PageExpansionSource, prompt: String) -> Bool {
+        guard !generationSession.isActive else { return false }
+        let key = ExpansionKey(parentPageKey: source.parentPageKey, sourceCardKey: source.sourceCardKey)
+        if let existing = expansionPages[key] {
             cancelRestore()
-            let existingPath = pages + forwardPages.reversed()
-            let keepsForward = existingPath.count >= targetPages.count &&
-                zip(existingPath, targetPages).allSatisfy { pair in pair.0 === pair.1 }
-            let remaining: [GeneratedPage] = keepsForward
-                ? Array(existingPath.dropFirst(targetPages.count).reversed()) : []
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                pages = targetPages
-                forwardPages = remaining
-                generationRegistry.select(page: target)
-            }
-            return .selected(actualPageID: target.id)
+            existing.isExpansion = true
+            existing.expansionSource = source
+            forwardPages = []
+            withAnimation(navigationAnimation(expansion: true)) { pages.append(existing) }
+            return true
         }
-    }
-
-    func knownCalendarPage(context: CalendarGenerationContext, from source: GeneratedPage,
-                           expectedScope: UUID) -> GeneratedPage? {
-        guard pages.contains(where: { $0 === source }), SavedPagesStore.shared.scopeID == expectedScope,
-              let key = source.conversationKey, !history.isRemoving(key) else { return nil }
-        return generationRegistry.retainedCalendarPage(
-            context: context, from: source, navigationPages: pages,
-            historyEpoch: history.epoch, expectedScope: expectedScope)
+        return send(prompt, expansion: true, expansionSource: source)
     }
 }

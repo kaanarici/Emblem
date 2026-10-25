@@ -19,7 +19,6 @@ export function isPublicHotelGalleryRoot(input: {
   hasParentContext: boolean;
   hasPrivateContext: boolean;
   hasAttachments: boolean;
-  hasCalendarContext: boolean;
   isDrillIn: boolean;
   isSavedSelection: boolean;
   isSingleUserTurn: boolean;
@@ -29,7 +28,6 @@ export function isPublicHotelGalleryRoot(input: {
     !input.hasParentContext &&
     !input.hasPrivateContext &&
     !input.hasAttachments &&
-    !input.hasCalendarContext &&
     !input.isDrillIn &&
     !input.isSavedSelection &&
     input.isSingleUserTurn &&

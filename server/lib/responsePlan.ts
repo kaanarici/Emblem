@@ -306,7 +306,6 @@ export function finalizePagePlan(
   finish: PageFinish | null,
   mode?: {
     articleLead?: boolean;
-    requiredInputOnly?: boolean;
     articleTitle?: string;
     explanationIntent?: boolean;
   },
@@ -331,13 +330,7 @@ export function finalizePagePlan(
   const needsInput = question.length > 0 && (inputKind !== "choice" || options.length >= 2);
   const areas = inputKind === "area" ? areaSpots(finish?.requiredInput?.areas) : [];
 
-  let page: Block[] = blocks
-    .filter((block) =>
-      needsInput && mode?.requiredInputOnly
-        ? block.type === "pageMeta" || block.type === "runStamp"
-        : block.type !== "chipRow",
-    )
-    .map(withQuestionIcons);
+  let page: Block[] = blocks.filter((block) => block.type !== "chipRow").map(withQuestionIcons);
   if (!mode?.explanationIntent) {
     page = page.filter((block) => block.type !== "diagram");
   }

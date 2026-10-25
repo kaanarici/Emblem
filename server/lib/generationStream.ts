@@ -15,10 +15,6 @@ import {
 import { api } from "@/convex/_generated/api";
 import { logError } from "./log";
 import { conversationCover } from "@/lib/blockImages";
-import {
-  calendarGenerationInstruction,
-  type CalendarGenerationContext,
-} from "@/lib/calendarGenerationContext";
 import type { AutomationSource } from "@/lib/executionGrant";
 import {
   generatedStepImageTokenSecret,
@@ -61,7 +57,7 @@ import { resolvePageMusic } from "@/lib/music";
 import { resolveServiceLinks } from "@/lib/serviceLinks";
 import type { InferenceSession } from "@/lib/inferenceTelemetry";
 import { createPageAssembly } from "@/lib/pageAssembly";
-import { CALENDAR_SYSTEM_PROMPT, SYSTEM_PROMPT, expansionEventGuidance } from "@/lib/prompt";
+import { SYSTEM_PROMPT, expansionEventGuidance } from "@/lib/prompt";
 import type { SelectedCalendarEvent } from "@/lib/calendarEventDrillIn";
 import { reasoningEffortFor } from "@/lib/reasoning";
 import { research } from "@/lib/research";
@@ -88,7 +84,6 @@ export type WireMessage = { role: "user" | "assistant"; content: string };
 
 type GenerationStreamRequest = {
   previewEnabled?: boolean;
-  calendarContext?: CalendarGenerationContext;
   messages: WireMessage[];
   attachments: Attachment[];
   persist: {
@@ -174,7 +169,6 @@ export function createStream(input: GenerationStreamRequest): Response {
   const request = withAttachmentPrompt(input);
   const {
     previewEnabled = false,
-    calendarContext,
     attachments,
     persist,
     inference,
@@ -184,8 +178,7 @@ export function createStream(input: GenerationStreamRequest): Response {
   const { timing } = request;
   const articleLead = persist.articleLead === true;
   const reasoningEffort = articleLead ? ("none" as const) : reasoningEffortFor(request.messages);
-  const calendarInstruction = calendarContext ? calendarGenerationInstruction(calendarContext) : "";
-  const responseContext = calendarInstruction + (request.context ?? "");
+  const responseContext = request.context ?? "";
   const requestPrompt =
     (persist.calendarEvent ? expansionEventGuidance(persist.calendarEvent) : "") + responseContext;
   const abortController = new AbortController();
@@ -264,9 +257,7 @@ export function createStream(input: GenerationStreamRequest): Response {
     const notes = await research({
       model: inference.models.research,
       messages,
-      onStatus: (text) => {
-        if (!calendarContext) emitter.status(text);
-      },
+      onStatus: (text) => emitter.status(text),
       context: [responseContext, ...hotelNotes].filter(Boolean).join("\n\n"),
       memory: request.memory
         ? { convex: convex ?? undefined, facts: request.memory.facts }
@@ -295,7 +286,7 @@ export function createStream(input: GenerationStreamRequest): Response {
           effort: reasoningEffort,
         },
         modelMessages: toModelMessages(messages, images),
-        requestText: calendarContext ? calendarInstruction + "\n" + persist.prompt : persist.prompt,
+        requestText: persist.prompt,
         throwModelErrors: inference.profile.research.credentialSource === "user",
         generation: generationLease ?? undefined,
       },
@@ -417,8 +408,7 @@ export function createStream(input: GenerationStreamRequest): Response {
       await finishGenerationFailure(convex, generationLease, GENERATION_CANCELLED, "cancelled");
       return;
     }
-    if (!emitter.progressSent && !calendarContext)
-      emitter.status("Laying out your page…", "status-compose");
+    if (!emitter.progressSent) emitter.status("Laying out your page…", "status-compose");
     activeRole = "compose";
     const hotelGalleryTarget = createHotelGalleryTarget(
       hotels,
@@ -427,7 +417,6 @@ export function createStream(input: GenerationStreamRequest): Response {
         hasParentContext: Boolean(persist.articleContext),
         hasPrivateContext: Boolean(request.context || request.memory),
         hasAttachments: attachments.length > 0,
-        hasCalendarContext: Boolean(calendarContext),
         isDrillIn: articleLead || persist.normalDrillIn === true,
         isSavedSelection: request.isolatedSelection === true,
         isSingleUserTurn: request.messages.length === 1 && request.messages[0].role === "user",
@@ -442,7 +431,6 @@ export function createStream(input: GenerationStreamRequest): Response {
       persist,
       homeControl: request.homeControl,
       articleLead,
-      requiredInputOnly: Boolean(calendarContext),
       messages,
       weatherPayloads: evidence.weatherPayloads,
       sources: evidence.sources,
@@ -456,13 +444,12 @@ export function createStream(input: GenerationStreamRequest): Response {
     });
     const composed = await composePage({
       messages: modelMessages,
-      systemPrompt: calendarContext ? CALENDAR_SYSTEM_PROMPT : SYSTEM_PROMPT,
+      systemPrompt: SYSTEM_PROMPT,
       requestPrompt,
-      datePrompt: calendarContext ? "" : persist.prompt,
+      datePrompt: persist.prompt,
       inference,
       persist,
       articleLead,
-      requiredInputOnly: Boolean(calendarContext),
       previewEnabled,
       evidence,
       assembly,
@@ -478,12 +465,8 @@ export function createStream(input: GenerationStreamRequest): Response {
       return;
     }
     await assembly.groundMapPlaces(composed.blocks);
-    if (composed.finish?.requiredInput && calendarContext) {
-      emitter.preview([]);
-    } else {
-      const projected = previewProjection(assembly.projectPage(composed.blocks));
-      if (pageCompositionIssues(projected).length === 0) emitter.preview(projected, true);
-    }
+    const projected = previewProjection(assembly.projectPage(composed.blocks));
+    if (pageCompositionIssues(projected).length === 0) emitter.preview(projected, true);
     await publish(emitter, composed.blocks, assembly);
   }
 

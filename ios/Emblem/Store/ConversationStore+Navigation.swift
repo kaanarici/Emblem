@@ -14,8 +14,7 @@ extension ConversationStore {
            let last = stack.last,
            last === generationSession.context?.page,
            !GenerationRegistry.hasVisibleContent(last),
-           !last.isExpansion,
-           last.calendarContext == nil {
+           !last.isExpansion {
             stack.removeLast()
         }
         return stack.map(\.id)

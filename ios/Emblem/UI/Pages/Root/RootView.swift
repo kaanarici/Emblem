@@ -49,13 +49,6 @@ struct RootView: View {
                 capturedIDs: root.pageIDs, homePageID: root.homePageID, capturedScope: root.scopeID,
                 pages: store.pages, navigationIDs: store.navigationPageIDs,
                 currentScope: savedPages.scopeID) else { return nil }
-        if root.destination == .calendar {
-            let calendarIDs = store.navigationPageIDs.dropFirst(root.pageIDs.count).prefix { id in
-                store.pages.first(where: { $0.id == id })?.calendarContext != nil
-            }
-            guard !calendarIDs.isEmpty else { return nil }
-            return currentPrefix + Array(calendarIDs)
-        }
         return currentPrefix
     }
 
@@ -168,7 +161,6 @@ struct RootView: View {
     var isHoldingForGeneration: Bool {
         store.isAwaitingFirstGenerationContent
             && !store.isExpansionGeneration
-            && !store.isCalendarGeneration
     }
 
     @State var windowBottomInset: CGFloat = 0
@@ -195,7 +187,7 @@ struct RootView: View {
     }
 
     var chromeSuppressed: Bool {
-        (primaryDestination != nil && primaryDestination != .saves && primaryDestination != .calendar)
+        (primaryDestination != nil && primaryDestination != .saves)
             || primaryRoot?.destination == .settings
             || savedEntitySelection != nil
             || store.isViewingPhoto || (mapIsTopmost && mapPresentation?.isCardVisible == true)
@@ -263,7 +255,7 @@ struct RootView: View {
                     dismissComposerAfterPageTap()
                 })
 
-                if !store.isExpansionGeneration && !store.isCalendarGeneration {
+                if !store.isExpansionGeneration {
                     GenerationOverlay(
                         thinking: isHoldingForGeneration,
                         holdDelay: generationHoldDelay,
@@ -410,8 +402,7 @@ struct RootView: View {
             }
             .onChange(of: store.responseWaveID) { _, id in
             handledResponseWaveID = id
-            guard id != nil, store.pages.count >= 2, !store.isExpansionGeneration,
-                  !store.isCalendarGeneration else { return }
+            guard id != nil, store.pages.count >= 2, !store.isExpansionGeneration else { return }
             guard let sourceImage = generationBackdrop else {
                 heldChromePage = nil
                 return

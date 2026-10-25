@@ -136,7 +136,6 @@ public final class GenerationSession {
             previousPageKey: failedPage.previousPageKey,
             parentPageKey: failedPage.parentPageKey,
             sourceCardKey: failedPage.sourceCardKey,
-            calendarContext: failedPage.calendarContext,
             runtimeReplacementAncestors: failedPage.runtimeReplacementAncestors.union([failedPage.id]))
         replacement.isExpansion = failedPage.isExpansion
         replacement.expansionSource = failedPage.expansionSource

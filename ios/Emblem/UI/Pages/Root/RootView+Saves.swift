@@ -168,14 +168,12 @@ extension RootView {
             case .calendar:
                 if let calendarSelection {
                     CalendarBrowserView(selection: calendarSelection, onMenu: openSidebar,
-                                        onSelect: { [selection = calendarSelection, scopeID = savedPages.scopeID] intent in
-                        guard self.calendarSelection === selection,
-                              savedPages.scopeID == scopeID,
-                              calendarIsTopmost else { return false }
-                        return generateCalendar(intent)
+                                        onSelect: { [selection = calendarSelection, scopeID = savedPages.scopeID] _ in
+                        self.calendarSelection === selection && savedPages.scopeID == scopeID && calendarIsTopmost
                     }) { period in
                         calendarPeriodBody(period)
                     }
+                    .overlay(alignment: .bottom) { calendarAccessory }
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationBarBackButtonHidden(true)
                 }

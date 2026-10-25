@@ -83,7 +83,8 @@ extension GenerateClient {
         let sourceCardKey: String?
         let sourceCardTitle: String?
         let sourceCardHasImage: Bool?
-        let calendarContext: CalendarGenerationContext?
+        let calendarEvent: CalendarEventDetails?
+        let drillInPresentation: String?
         let savedSelection: SavedSelection?
         let attachments: [WireAttachment]?
         let location: WireLocation?
@@ -102,7 +103,7 @@ extension GenerateClient {
             sourceCardTitle: String? = nil,
             sourceCardHasImage: Bool? = nil,
             savedSelection: SavedSelection? = nil,
-            calendarContext: CalendarGenerationContext? = nil,
+            calendarEvent: CalendarEventDetails? = nil,
             attachments: [WireAttachment]? = nil,
             location: WireLocation? = nil,
             timezone: String? = TimeZone.current.identifier,
@@ -120,7 +121,8 @@ extension GenerateClient {
             self.sourceCardKey = sourceCardKey
             self.sourceCardTitle = sourceCardTitle
             self.sourceCardHasImage = sourceCardHasImage
-            self.calendarContext = calendarContext
+            self.calendarEvent = calendarEvent
+            drillInPresentation = calendarEvent == nil ? nil : "article"
             self.savedSelection = savedSelection
             self.attachments = attachments
             self.location = location
@@ -141,7 +143,7 @@ extension GenerateClient {
                 sourceCardTitle: sourceCardTitle,
                 sourceCardHasImage: sourceCardHasImage,
                 savedSelection: savedSelection,
-                calendarContext: calendarContext,
+                calendarEvent: calendarEvent,
                 attachments: attachments,
                 location: location,
                 timezone: timezone,

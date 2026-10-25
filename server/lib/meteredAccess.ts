@@ -36,6 +36,10 @@ export const METERED_ROUTES = {
     name: "connectors-read",
     perCaller: { capacity: 60, refillPerHour: 120 },
   },
+  calendarEvents: {
+    name: "calendar-events",
+    perCaller: { capacity: 30, refillPerHour: 120 },
+  },
   hint: {
     name: "hint",
     perCaller: { capacity: 30, refillPerHour: 30 },

@@ -100,13 +100,13 @@ extension RootView {
         if let origin = primaryOriginPageIDs,
            let source = store.pendingPresentationSourcePage,
            source.id == (origin.last ?? store.pages.first?.id) { return nil }
-        guard let page = chromePresentationPage, page.calendarContext == nil, !primaryIsTopmost, !isSavedEntryRoot,
+        guard let page = chromePresentationPage, !primaryIsTopmost, !isSavedEntryRoot,
               savedEntry?.rootPageID != page.id,
               savedEntitySelection == nil, comparisonPresentation == nil,
               !(mapIsTopmost && mapPresentation?.block.thin != true),
               !store.isViewingPhoto,
               !calendarIsTopmost,
-              primaryDestination == nil || primaryDestination == .calendar || savedEntry != nil else { return nil }
+              primaryDestination == nil || savedEntry != nil else { return nil }
         return page
     }
 

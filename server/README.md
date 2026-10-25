@@ -106,7 +106,7 @@ Every Convex function takes the owner from `ctx.auth` (`convex/ownership.ts`), n
 - Clearing memory deletes at most 80 records per batch, up to 100 batches or ten seconds.
 - Resolved image URLs and generation runs are kept for 30 days, then purged by daily crons. A request ID replayed after that runs again.
 - Errors are logged as one JSON line each (`lib/log.ts`) with the error's name, code and status, never its message or stack. Each event is capped at 20 lines a minute.
-- Connected apps use Composio and are read-only. Results pass through the allowlisted projection in `lib/connectorPresentation.ts` before the model sees them.
+- Connected apps use Composio and are read-only. Every result passes through the allowlisted projection in `lib/connectorPresentation.ts`, before the model sees it and before `GET /api/calendar/events` returns it. That route gives the app a signed-in person's Google Calendar events between `start` and `end` (ISO 8601 instants at most 45 days apart, plus an optional `timeZone`), read per connected account: an account that fails is marked `failed` and the others still return. Guests and people without a connection get `notConnected` and no events. It has its own small budget in `METERED_ROUTES`.
 
 ## Deploying
 

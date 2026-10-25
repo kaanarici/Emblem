@@ -45,7 +45,12 @@ struct CalendarBrowserDay: Hashable, Comparable, Sendable, Codable, Identifiable
     func encode(to encoder: Encoder) throws { var container = encoder.singleValueContainer(); try container.encode(id) }
 }
 
-enum CalendarBrowserMode: String, CaseIterable, Codable, Sendable { case daily, weekly }
+enum CalendarBrowserMode: String, CaseIterable, Codable, Sendable {
+    case daily, weekly, monthly
+
+    var scope: CalendarBrowserScope { self == .daily ? .day : self == .weekly ? .week : .month }
+    var component: Calendar.Component { self == .daily ? .day : self == .weekly ? .weekOfYear : .month }
+}
 enum CalendarBrowserScope: String, Codable, Sendable { case day, week, month }
 enum CalendarBrowserSelectionError: Error, Equatable { case invalidDate, invalidTimeZone }
 
@@ -59,28 +64,7 @@ struct CalendarBrowserSnapshot: Equatable, Hashable, Sendable {
 }
 
 struct CalendarBrowserIntent: Equatable, Sendable {
-    enum Reason: String, Sendable { case initial, day, week, month, mode, today, retry }
-    let id: UUID
     let selection: CalendarBrowserSnapshot
-    let reason: Reason
-
-    var prompt: String {
-        let zone = TimeZone(identifier: selection.timeZone)!
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.timeZone = zone
-        formatter.dateFormat = "EEEE, MMMM d, yyyy"
-        let subject: String
-        switch selection.scope {
-        case .day: subject = formatter.string(from: selection.startInclusive)
-        case .week:
-            subject = "the week of " + formatter.string(from: selection.startInclusive)
-        case .month:
-            formatter.dateFormat = "MMMM yyyy"
-            subject = formatter.string(from: selection.startInclusive)
-        }
-        return "Show my calendar for \(subject). Use the selected \(selection.timeZone) time zone."
-    }
 }
 
 @Observable @MainActor
@@ -95,7 +79,7 @@ final class CalendarBrowserSelection {
         guard let zone = TimeZone(identifier: timeZone) else { throw CalendarBrowserSelectionError.invalidTimeZone }
         guard date.date(in: zone) != nil else { throw CalendarBrowserSelectionError.invalidDate }
         selectedDate = date; self.mode = mode; self.timeZone = timeZone
-        scope = mode == .daily ? .day : .week
+        scope = mode.scope
     }
 
     var zone: TimeZone { TimeZone(identifier: timeZone)! }
@@ -112,35 +96,33 @@ final class CalendarBrowserSelection {
                                        startInclusive: interval.start, endExclusive: interval.end)
     }
 
-    func intent(_ reason: CalendarBrowserIntent.Reason) -> CalendarBrowserIntent {
-        CalendarBrowserIntent(id: UUID(), selection: snapshot, reason: reason)
-    }
+    var intent: CalendarBrowserIntent { CalendarBrowserIntent(selection: snapshot) }
 
     func chooseDay(_ day: CalendarBrowserDay) throws -> CalendarBrowserIntent {
         guard day.date(in: zone) != nil else { throw CalendarBrowserSelectionError.invalidDate }
         selectedDate = day; scope = .day; responseScrollAnchor = nil
-        return intent(.day)
+        return intent
     }
 
-    func chooseWeek(offset: Int) throws -> CalendarBrowserIntent {
-        guard let date = calendar.date(byAdding: .weekOfYear, value: offset, to: selectedInstant) else {
+    func choosePeriod(offset: Int) throws -> CalendarBrowserIntent {
+        guard let date = calendar.date(byAdding: mode.component, value: offset, to: selectedInstant) else {
             throw CalendarBrowserSelectionError.invalidDate
         }
         let candidate = CalendarBrowserDay(date: date, timeZone: zone)
         guard (1...9999).contains(candidate.year), candidate.date(in: zone) != nil else { throw CalendarBrowserSelectionError.invalidDate }
-        selectedDate = candidate; scope = .week; responseScrollAnchor = nil
-        return intent(.week)
+        selectedDate = candidate; scope = mode.scope; responseScrollAnchor = nil
+        return intent
     }
 
     func chooseMode(_ value: CalendarBrowserMode) -> CalendarBrowserIntent {
-        mode = value; scope = value == .daily ? .day : .week; responseScrollAnchor = nil
-        return intent(.mode)
+        mode = value; scope = value.scope; responseScrollAnchor = nil
+        return intent
     }
 
     func today(now: Date = .now) -> CalendarBrowserIntent {
         selectedDate = CalendarBrowserDay(date: now, timeZone: zone)
-        scope = mode == .daily ? .day : .week; responseScrollAnchor = nil
-        return intent(.today)
+        scope = mode.scope; responseScrollAnchor = nil
+        return intent
     }
 
     @discardableResult

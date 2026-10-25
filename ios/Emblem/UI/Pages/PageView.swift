@@ -10,7 +10,6 @@ struct PageView: View {
     @State private var topPullDistance: CGFloat = 0
     @State private var homeTopInset: CGFloat = 0
     @State private var homeKeyboardOverlap: CGFloat = 0
-    @Environment(\.calendarAgenda) private var calendarAgenda
 
     private var surfacePlan: ResponseSurfacePlan {
         ResponseSurfacePlan(
@@ -19,7 +18,6 @@ struct PageView: View {
     }
 
     private var pageBackground: Color {
-        if calendarAgenda { return Theme.sidebarBackground }
         return page.isHome ? .clear : (surfacePlan.terminalSurface?.color ?? Theme.responsePaper)
     }
 
@@ -83,7 +81,7 @@ struct PageView: View {
                 }
                     .padding(.top, 18)
                     .background(alignment: .top) {
-                        if surfacePlan.isEnabled, !calendarAgenda {
+                        if surfacePlan.isEnabled {
                             surfacePlan.initialColor.frame(height: 18)
                         }
                     }
@@ -99,7 +97,7 @@ struct PageView: View {
             }
             .safeAreaPadding(.bottom, page.isHome ? 0 : 80)
             .background(alignment: .top) {
-                if surfacePlan.isEnabled, !calendarAgenda {
+                if surfacePlan.isEnabled {
                     surfacePlan.initialColor
                         .frame(height: 160 + topPullDistance)
                         .ignoresSafeArea(.container, edges: .top)
@@ -313,9 +311,6 @@ struct PageView: View {
     }
 
     private func pageContent(blocks: [Block]) -> some View {
-        let blocks = calendarAgenda
-            ? blocks.filter { if case .chipRow(let row) = $0 { row.role != .followUp } else { true } }
-            : blocks
         let plan = ResponseSurfacePlan(
             blocks: blocks, isHome: page.isHome, asksQuestions: page.presentationMeta?.ask == true)
         return VStack(alignment: .leading, spacing: plan.isEnabled ? 0 : 28) {
@@ -353,18 +348,9 @@ struct PageView: View {
             PageBlockList(blocks: blocks, pageID: page.id.uuidString)
                 .padding(.bottom, plan.isEnabled && plan.endsOnPaper ? 28 : 0)
                 .background {
-                    if plan.isEnabled, !calendarAgenda { plan.initialColor }
+                    if plan.isEnabled { plan.initialColor }
                 }
                 .zIndex(1)
-
-            if calendarAgenda, !page.isStreaming, !blocks.isEmpty,
-               !blocks.contains(where: { if case .eventCard = $0 { true } else { false } }) {
-                EmptyDayArt()
-                    .frame(width: 178)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4.0 / 3)
-                    .transition(.opacity)
-            }
 
             VStack(spacing: plan.isEnabled ? 0 : 28) {
                 if showsSources {
@@ -375,7 +361,7 @@ struct PageView: View {
                 Color.clear.frame(height: plan.terminalSurface == .followUpCanvas ? 0 : 140)
             }
             .background {
-                if let surface = plan.terminalSurface, !calendarAgenda {
+                if let surface = plan.terminalSurface {
                     surface.color
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -387,7 +373,7 @@ struct PageView: View {
     }
 
     private var showsSources: Bool {
-        !calendarAgenda && !page.isStreaming && (
+        !page.isStreaming && (
             !page.sources.isEmpty || page.activities.contains {
                 $0.status != "started" && $0.source != "web"
             }

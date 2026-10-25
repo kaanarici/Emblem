@@ -31,7 +31,7 @@ flowchart LR
 | Card expansion and back/forward history              | `ConversationStore`, `PageExpansionSource`                                        | `/api/history`, cancellation and replay on `/api/generate`                |
 | Rename, pin, archive, restore, delete conversation   | `ConversationsView`, `ArchivedChatsView`                                          | `/api/conversation`, `conversations.ts`                                   |
 | Saved pages and items                                | `SavedPagesView`, `SavedPagesStore`, `SavedEntityDetailView`                      | Stored on device per account; `/api/saves/classify` picks the category    |
-| Calendar day and week, event pages                   | `CalendarBrowserView`, `EventCardView`                                            | `/api/generate` with calendar context, `calendarEventDrillIn.ts`          |
+| Calendar day, week and month, event pages            | `CalendarBrowserView`, `CalendarAgendaFeed` (EventKit and Reminders)              | `/api/calendar/events` for Google; event pages through `/api/generate`, `calendarEventDrillIn.ts` |
 | Question cards and choices                           | `QuestionListView`, `QuestionSheetHost`, `QuestionOptionsClient`                  | Suggested answers in the page; `/api/question-options` after it finishes  |
 | Daily updates and automations                        | Settings, `ScheduledPagesView`, `AgentsStore`                                     | `/api/agents`, `automations.ts`, `automationDispatch.ts`, `background.ts` |
 | Connected apps                                       | `ConnectorsView`, `ConnectedAppsStore`                                            | `/api/connectors`, Composio reads, `connectorPresentation.ts`             |

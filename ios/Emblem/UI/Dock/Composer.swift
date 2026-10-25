@@ -26,7 +26,8 @@ struct ComposerCard: View {
                     .padding(.bottom, 12)
             }
 
-            TextField("Ask Emblem", text: $draft, axis: .vertical)
+            TextField(CalendarAgendaFeed.shared.isFront ? "Add to your day" : "Ask Emblem",
+                      text: $draft, axis: .vertical)
                 .accessibilityIdentifier("composer-draft")
                 .focused(focus)
                 .font(.system(size: 16))

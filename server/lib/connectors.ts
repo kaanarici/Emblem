@@ -57,7 +57,7 @@ export function connectorsEnabled(): boolean {
 
 let composioClient: Promise<InstanceType<typeof import("@composio/core").Composio>> | null = null;
 
-function getComposio() {
+export function getComposio() {
   composioClient ??= (async () => {
     const { Composio } = await import("@composio/core");
     const { VercelProvider } = await import("@composio/vercel");
@@ -738,7 +738,7 @@ function withConnectorDeadline<T>(work: () => Promise<T>, signal?: AbortSignal):
   });
 }
 
-function controlPlaneCall<T>(
+export function controlPlaneCall<T>(
   work: (signal: AbortSignal) => Promise<T>,
   parent?: AbortSignal,
 ): Promise<T> {

@@ -100,6 +100,12 @@ extension DockView {
             draft = ""
             return
         }
+        if !prompt.isEmpty, CalendarAgendaFeed.shared.isFront {
+            CalendarAgendaFeed.shared.compose(prompt)
+            draft = ""
+            store.dockState = .idle
+            return
+        }
         if store.send(prompt) { draft = "" }
     }
 

@@ -60,6 +60,15 @@ class JourneyTestCase: XCTestCase {
         (allow.exists ? allow : alert.buttons.firstMatch).tap()
     }
 
+    func allowSystemAlert(timeout: TimeInterval = 5) {
+        let alert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        guard alert.waitForExistence(timeout: timeout) else { return }
+        let allow = alert.buttons.matching(NSPredicate(
+            format: "NOT (label BEGINSWITH[c] 'Don') AND (label CONTAINS[c] 'Allow' OR label CONTAINS[c] 'Add' OR label ==[c] 'OK')"))
+            .firstMatch
+        (allow.exists ? allow : alert.buttons.element(boundBy: alert.buttons.count - 1)).tap()
+    }
+
     func openSidebar() {
         tap(app.buttons["Open menu"].firstMatch)
         XCTAssertTrue(app.buttons["sidebar-settings"].waitForExistence(timeout: 5))
@@ -67,6 +76,12 @@ class JourneyTestCase: XCTestCase {
 }
 
 final class StubServer: @unchecked Sendable {
+    struct GoogleEvent {
+        let title: String
+        let start: Date
+        var minutes = 60
+    }
+
     struct Conversation {
         let key: String
         let title: String
@@ -81,13 +96,16 @@ final class StubServer: @unchecked Sendable {
     private var replies: [String]
     private var history: [Conversation]
     private let listPageSize: Int
+    private let google: [GoogleEvent]
     private var received: [String] = []
     private(set) var url = ""
 
     var prompts: [String] { lock.withLock { received } }
     var pinnedKeys: [String] { lock.withLock { history.filter(\.pinned).map(\.key) } }
 
-    init(replies: [String] = ["natural-evidence"], history: [Conversation] = [], listPageSize: Int = 50) throws {
+    init(replies: [String] = ["natural-evidence"], history: [Conversation] = [], listPageSize: Int = 50,
+         google: [GoogleEvent] = []) throws {
+        self.google = google
         self.replies = replies
         self.history = history
         self.listPageSize = listPageSize
@@ -161,6 +179,14 @@ final class StubServer: @unchecked Sendable {
                 {"type":"terminal","status":"completed","revision":1,"blockCount":\(blocks.count),"persisted":false}
 
                 """)
+        case "/api/calendar/events":
+            guard !google.isEmpty else { return ("application/json", #"{"google":{"state":"notConnected","accounts":[]},"events":[]}"#) }
+            let iso = ISO8601DateFormatter()
+            let rows = google.enumerated().map { index, event in
+                let end = event.start.addingTimeInterval(Double(event.minutes * 60))
+                return #"{"id":"g\#(index)","iCalUID":null,"title":"\#(event.title)","start":"\#(iso.string(from: event.start))","end":"\#(iso.string(from: end))","allDay":false,"location":null,"calendar":"Work","color":null,"account":"sam@example.com","url":null,"attendees":[]}"#
+            }
+            return ("application/json", #"{"google":{"state":"connected","accounts":[{"email":"sam@example.com","state":"ok"}]},"events":[\#(rows.joined(separator: ","))]}"#)
         case "/api/conversation":
             let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: String] ?? [:]
             lock.withLock {

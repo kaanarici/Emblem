@@ -46,8 +46,6 @@ const GENERIC_RETRY = [
 const CONCISE_RETRY =
   "The previous attempt ran out of output space. Be concise: at most five supporting sections, at most six cards per carousel, one-sentence captions, no repeated facts, and copy image queries exactly as supplied without expanding them.";
 
-type DateGrounding = ReturnType<typeof temporalGrounding>;
-
 type ComposeRequest = {
   messages: ModelMessage[];
   systemPrompt: string;
@@ -56,7 +54,6 @@ type ComposeRequest = {
   inference: InferenceSession;
   persist: { requestId: string; timezone: string };
   articleLead: boolean;
-  requiredInputOnly?: boolean;
   previewEnabled: boolean;
   evidence: GenerationEvidence;
   assembly: ReturnType<typeof createPageAssembly>;
@@ -68,9 +65,7 @@ type ComposeRequest = {
   stages: LatencyStages;
 };
 
-type ComposeResult =
-  | { ok: true; blocks: Block[]; finish: PageFinish | null; dateGrounding: DateGrounding }
-  | { ok: false; error: unknown };
+type ComposeResult = { ok: true; blocks: Block[] } | { ok: false; error: unknown };
 
 function clipGroundedInput(messages: ModelMessage[], max: number): ModelMessage[] {
   const last = messages.at(-1);
@@ -171,7 +166,7 @@ export async function composePage(request: ComposeRequest): Promise<ComposeResul
   let prefix: Block[] = [];
   let shownCount = 0;
   let requiredInputSeen = false;
-  let salvage: { blocks: Block[]; finish: PageFinish | null } | null = null;
+  let salvage: Block[] | null = null;
   let truncatedAttempt = false;
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     if (signals.deadline.aborted) break;
@@ -280,11 +275,6 @@ export async function composePage(request: ComposeRequest): Promise<ComposeResul
           signals.request.throwIfAborted();
           for (const element of progress.complete.slice(consumed)) accept(element);
           consumed = progress.complete.length;
-          if (request.requiredInputOnly && (finish as PageFinish | null)?.requiredInput) {
-            emitter.preview([]);
-            shownCount = 0;
-            continue;
-          }
           let draft =
             progress.draft && !isPageFinish(progress.draft)
               ? assembly.canonicalComposerBlock(progress.draft)
@@ -332,22 +322,18 @@ export async function composePage(request: ComposeRequest): Promise<ComposeResul
     const combined = restarted ? [...page] : [...prefix, ...page];
     const { blocks, issues } = assembly.finalizePage(combined, finish, dateGrounding);
     if (!streamError && issues.length === 0 && blocks.length > 0) {
-      return { ok: true, blocks, finish, dateGrounding };
+      return { ok: true, blocks };
     }
     if (streamError && !requiredInputSeen) {
       const bare =
         issues.length === 0 ? null : assembly.finalizePage(combined, null, dateGrounding);
-      const candidate = !bare
-        ? { blocks, finish: finish as PageFinish | null }
-        : bare.issues.length === 0
-          ? { blocks: bare.blocks, finish: null }
-          : null;
+      const candidate = !bare ? blocks : bare.issues.length === 0 ? bare.blocks : null;
       if (candidate && combined.length > prefix.length) prefix = combined;
       if (
         candidate &&
         truncatedAttempt &&
         contentBlockCount(combined) >= SALVAGE_MIN_CONTENT_BLOCKS &&
-        candidate.blocks.length > (salvage?.blocks.length ?? 0)
+        candidate.length > (salvage?.length ?? 0)
       )
         salvage = candidate;
     }
@@ -382,9 +368,9 @@ export async function composePage(request: ComposeRequest): Promise<ComposeResul
   if (salvage && !requiredInputSeen && !signals.request.aborted && !signals.deadline.aborted) {
     logEvent("warn", "compose salvaged valid prefix", {
       requestId: request.persist.requestId,
-      blocks: salvage.blocks.length,
+      blocks: salvage.length,
     });
-    return { ok: true, ...salvage, dateGrounding };
+    return { ok: true, blocks: salvage };
   }
   return { ok: false, error: lastError ?? new Error("empty generation") };
 }

@@ -5,11 +5,8 @@ import EmblemCore
 extension RootView {
     var navigationPath: Binding<[RootRoute]> {
         Binding(get: {
-            var routes = visiblePageIDs.map { id -> RootRoute in
-                store.pages.first(where: { $0.id == id })?.calendarContext != nil
-                    ? .primary(.calendar) : .page(id)
-            }
-            if let primaryDestination, primaryDestination != .calendar {
+            var routes = visiblePageIDs.map(RootRoute.page)
+            if let primaryDestination {
                 let insertion = savedEntry.flatMap { entry in
                     routes.firstIndex(of: .page(entry.rootPageID))
                 } ?? routes.endIndex
@@ -18,10 +15,7 @@ extension RootView {
             if let map = mapPresentation, store.pages.contains(where: { $0 === map.parent }) {
                 if map.parent === store.pages.first || map.parent.id == primaryOriginPageIDs?.last {
                     routes.insert(.map(map.id), at: 0)
-                } else if let anchor = routes.firstIndex(where: {
-                    $0 == .page(map.parent.id) ||
-                    ($0 == .primary(.calendar) && calendarPage?.id == map.parent.id)
-                }) {
+                } else if let anchor = routes.firstIndex(of: .page(map.parent.id)) {
                     routes.insert(.map(map.id), at: anchor + 1)
                 }
             }
@@ -31,7 +25,6 @@ extension RootView {
         }, set: { routes in
             let pageIDs = (primaryOriginPageIDs ?? []) + routes.compactMap { route -> UUID? in
                 if case .page(let id) = route { return id }
-                if route == .primary(.calendar) { return calendarPage?.id }
                 return nil
             }
             primaryDestination = routes.compactMap { route -> PrimaryDestination? in

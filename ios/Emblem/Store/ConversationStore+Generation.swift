@@ -21,16 +21,16 @@ extension ConversationStore {
         if let replacing = run.replacingPage,
            replaceGenerationPage(replacing, with: page) {
             if let key = expansionKey(for: page) { expansionPages[key] = page }
-            if isForeground && !page.isExpansion && page.calendarContext == nil { responseWaveID = UUID() }
+            if isForeground && !page.isExpansion { responseWaveID = UUID() }
             return
         }
         if pages.contains(where: { $0 === page }) {
-            if isForeground && !page.isExpansion && page.calendarContext == nil { responseWaveID = UUID() }
+            if isForeground && !page.isExpansion { responseWaveID = UUID() }
             return
         }
         guard isForeground else { return }
         forwardPages = []
-        if !page.isExpansion && page.calendarContext == nil { responseWaveID = UUID() }
+        if !page.isExpansion { responseWaveID = UUID() }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { pages.append(page) }
@@ -175,7 +175,7 @@ extension ConversationStore {
     }
 
     func discardEmptyGenerationPage(_ page: GeneratedPage, animated: Bool = true) {
-        guard page.visibleBlocks.isEmpty, !page.isHome, page.calendarContext == nil else { return }
+        guard page.visibleBlocks.isEmpty, !page.isHome else { return }
         if let key = expansionKey(for: page), expansionPages[key] === page {
             expansionPages[key] = nil
         }
