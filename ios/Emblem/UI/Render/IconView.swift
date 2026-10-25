@@ -225,20 +225,15 @@ private struct ObjectIconImage: View {
 }
 
 struct PressableStyle: ButtonStyle {
-    var hapticsEnabled = true
     var pressedScale: CGFloat = 0.96
     var elevation: CardElevation? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .modifier(RestingElevation(elevation: elevation))
             .scaleEffect(configuration.isPressed && !reduceMotion ? pressedScale : 1)
             .animation(reduceMotion ? nil : .spring(duration: 0.28), value: configuration.isPressed)
-            .sensoryFeedback(.impact(weight: .light), trigger: configuration.isPressed) { old, new in
-                hapticsEnabled && isEnabled && !old && new
-            }
     }
 }
 

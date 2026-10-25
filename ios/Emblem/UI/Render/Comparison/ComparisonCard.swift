@@ -193,6 +193,7 @@ struct ComparisonSwapChips: View {
     @Binding var selected: Int
     @State private var shown: Int?
     @State private var laps: [Int: Int] = [:]
+    @State private var picks = 0
 
     private var current: Int {
         let value = shown ?? selected
@@ -230,7 +231,7 @@ struct ComparisonSwapChips: View {
             if isPair { select(dx < 0 ? 1 : 0) }
             else { select((current + (dx < 0 ? 1 : -1) + entities.count) % entities.count) }
         })
-        .sensoryFeedback(.selection, trigger: current)
+        .sensoryFeedback(EmblemHaptic.select, trigger: picks)
         .onChange(of: selected) { _, value in
             if value != current { move(to: value) }
         }
@@ -269,6 +270,7 @@ struct ComparisonSwapChips: View {
             move(to: index)
         }
         selected = index
+        picks += 1
     }
 }
 

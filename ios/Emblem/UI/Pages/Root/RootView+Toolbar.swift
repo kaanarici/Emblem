@@ -177,8 +177,8 @@ extension RootView {
                         .contentShape(Rectangle())
                         .foregroundStyle(.primary)
                     }
-                    .sensoryFeedback(trigger: pageIsSaved(page)) { _, saved in
-                        saved ? .success : .impact(weight: .light)
+                    .sensoryFeedback(trigger: pageSaveTaps) { _, _ in
+                        pageIsSaved(page) ? EmblemHaptic.saved : EmblemHaptic.removed
                     }
                     .accessibilityLabel(pageIsSaved(page) ? "Remove saved page" : "Save page")
                     .accessibilityIdentifier("page-save")

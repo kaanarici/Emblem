@@ -58,6 +58,7 @@ struct DockView: View {
     @GestureState var voicePressActive = false
     @State var voiceStartTask: Task<Void, Never>?
     @State var voiceFinalizationTask: Task<Void, Never>?
+    @State var missingAnswersNudges = 0
     @State var draft = ""
     @State var showsEditorSlots = (left: false, right: false)
     @State private var shownTrailing: DockTrailingControl?
@@ -90,6 +91,15 @@ struct DockView: View {
         dockBody
             .allowsHitTesting(acceptsInput)
             .accessibilityHidden(accessibilitySuppressed)
+            .sensoryFeedback(trigger: speech.phase) { old, new in
+                switch (old, new) {
+                case (.idle, .held), (.editing, .locked): EmblemHaptic.listenStart
+                case (.held, .locked): EmblemHaptic.listenLock
+                default: nil
+                }
+            }
+            .sensoryFeedback(EmblemHaptic.listenStop, trigger: voiceFinalizationTask != nil) { old, new in !old && new }
+            .sensoryFeedback(EmblemHaptic.needsAnswer, trigger: missingAnswersNudges)
     }
 
     private var dockBody: some View {

@@ -117,7 +117,7 @@ private struct WritingCopyToast: View {
                     .allowsHitTesting(false)
             }
         }
-        .sensoryFeedback(.success, trigger: trigger) { _, new in new != nil }
+        .sensoryFeedback(EmblemHaptic.copied, trigger: trigger) { _, new in new != nil }
         .task(id: trigger) {
             guard trigger != nil else {
                 isPresented = false

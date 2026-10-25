@@ -144,7 +144,6 @@ final class ListeningPulse {
 
     func absorb() {
         count += 1
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.55)
     }
 }
 

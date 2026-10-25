@@ -35,6 +35,8 @@ struct QuizView: View {
             footer
         }
         .padding(.horizontal, Theme.contentMargin)
+        .sensoryFeedback(EmblemHaptic.select, trigger: picked) { _, new in !new.isEmpty }
+        .sensoryFeedback(EmblemHaptic.allCorrect, trigger: graded) { _, new in new && score == block.questions.count }
     }
 
     private func questionView(_ qIndex: Int, _ question: Quiz.Question) -> some View {

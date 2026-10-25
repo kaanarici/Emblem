@@ -82,7 +82,7 @@ extension DockView {
                 if action == ConversationStore.doneAction, store.activeQuestion != nil {
                     store.confirmQuestion()
                 } else if isQuestionContinue(control), store.requiredAnswersMissing {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    missingAnswersNudges += 1
                     store.flagMissingAnswers()
                 } else {
                     performAction(action)

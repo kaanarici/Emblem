@@ -90,7 +90,7 @@ struct RemindersCardView: View {
         }
         .buttonStyle(.plain)
         .blockActivationControl()
-        .sensoryFeedback(.selection, trigger: item.done)
+        .sensoryFeedback(EmblemHaptic.toggle, trigger: item.done)
         .accessibilityLabel(item.title)
         .accessibilityValue(item.done ? "Completed" : "Not completed")
         .accessibilityIdentifier("reminder-row")

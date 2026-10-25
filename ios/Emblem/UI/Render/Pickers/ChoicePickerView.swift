@@ -31,6 +31,7 @@ struct ChoiceOptionList: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+        .sensoryFeedback(EmblemHaptic.select, trigger: selection)
     }
 }
 
@@ -63,6 +64,7 @@ struct ChoiceChips: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+        .sensoryFeedback(EmblemHaptic.select, trigger: selection)
     }
 }
 
@@ -109,12 +111,12 @@ struct ChoiceCardGrid: View {
                 }
                 .blockActivationControl()
                 .buttonStyle(.pressable)
-                .sensoryFeedback(.selection, trigger: isSelected)
                 .animation(.smooth(duration: 0.2), value: isSelected)
                 .accessibilityIdentifier("choice-\(option)")
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+        .sensoryFeedback(EmblemHaptic.select, trigger: selection)
     }
 
     static func picks(in value: String, from options: [String]) -> Set<String> {

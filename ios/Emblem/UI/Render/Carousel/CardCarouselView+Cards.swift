@@ -200,7 +200,7 @@ extension CardCarouselView {
                 .accessibilityElement(children: .combine)
             }
             .blockStoreMutationControl()
-            .buttonStyle(PressableStyle(hapticsEnabled: card.conversation == nil))
+            .buttonStyle(.pressable)
             .textSelection(.disabled)
             .modifier(CardMenu(card: card))
         }
@@ -241,7 +241,7 @@ extension CardCarouselView {
             .accessibilityElement(children: .combine)
         }
         .blockStoreMutationControl()
-        .buttonStyle(PressableStyle(hapticsEnabled: card.conversation == nil))
+        .buttonStyle(.pressable)
         .textSelection(.disabled)
         .modifier(CardMenu(card: card))
     }

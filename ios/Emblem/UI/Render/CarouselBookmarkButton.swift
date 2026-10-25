@@ -22,6 +22,7 @@ struct CarouselBookmarkButton: View {
     @Environment(\.savedItemDidSave) private var savedItemDidSave
     @State private var savedPages = SavedPagesStore.shared
     @State private var isPending = false
+    @State private var bookmarkTaps = 0
     @State private var errorMessage: String?
 
     private var sourceCardKey: String {
@@ -57,6 +58,7 @@ struct CarouselBookmarkButton: View {
             }
             .buttonStyle(.pressable)
             .blockStoreMutationControl()
+            .sensoryFeedback(trigger: bookmarkTaps) { _, _ in isSaved ? EmblemHaptic.saved : EmblemHaptic.removed }
             .disabled(isPending || blockInteraction == nil)
             .accessibilityLabel(isSaved ? "Remove \(card.title) from Saves" : "Save \(card.title)")
             .accessibilityValue(isSaved ? "Saved" : "Not saved")
@@ -84,6 +86,7 @@ struct CarouselBookmarkButton: View {
                                            interaction: interaction, store: savedPages, expectedScope: scope) {
                 savedItemDidSave?(added)
             }
+            bookmarkTaps += 1
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -132,6 +135,7 @@ struct CarouselPinButton: View {
         }
         .buttonStyle(.pressable)
         .blockStoreMutationControl()
+        .sensoryFeedback(EmblemHaptic.removed, trigger: isPinned) { old, new in old && !new }
         .opacity(isPinned ? 1 : 0)
         .allowsHitTesting(isPinned)
         .accessibilityHidden(!isPinned)

@@ -9,6 +9,8 @@ struct CountPickerView: View {
 
     @State private var count: Int = 1
     @State private var chipPick: Int?
+    @State private var steps = 0
+    @State private var chipTaps = 0
     @State private var typing = false
     @State private var typed = ""
     @FocusState private var keyboardFocused: Bool
@@ -45,7 +47,7 @@ struct CountPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: inline ? .top : .center, spacing: 0) {
-                stepButton("minus") { pick(count - step, chip: false) }
+                stepButton("minus") { steps -= 1; pick(count - step, chip: false) }
                     .disabled(count <= lower)
                 Spacer(minLength: 0)
                 VStack(spacing: inline ? -2.5 : -9) {
@@ -93,7 +95,7 @@ struct CountPickerView: View {
                 .frame(width: 150)
                 .padding(.top, inline ? -10 : 0)
                 Spacer(minLength: 0)
-                stepButton("plus") { pick(count + step, chip: false) }
+                stepButton("plus") { steps += 1; pick(count + step, chip: false) }
                     .disabled(count >= upper)
             }
             .padding(.horizontal, sideMargin)
@@ -107,7 +109,7 @@ struct CountPickerView: View {
                 LeadingFlowLayout(spacing: inline ? 4.5 : 6, lineSpacing: 4.5, centered: true) {
                     ForEach(shortcuts, id: \.self) { n in
                         SuggestionChip(label: "\(n) \(pluralUnit(n))", selected: n == (inline ? count : chipPick),
-                                       height: inline ? 39.5 : 40) { pick(n, chip: true) }
+                                       height: inline ? 39.5 : 40) { chipTaps += 1; pick(n, chip: true) }
                             .accessibilityIdentifier("count-chip-\(n)")
                     }
                 }
@@ -116,6 +118,8 @@ struct CountPickerView: View {
             }
         }
         .task(id: blockInteraction.allowsStoreMutation) { seed() }
+        .sensoryFeedback(trigger: steps) { old, new in new > old ? EmblemHaptic.increase : EmblemHaptic.decrease }
+        .sensoryFeedback(EmblemHaptic.select, trigger: chipTaps)
     }
 
     private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {

@@ -332,7 +332,7 @@ struct HomeSidebar: View {
             .background(Theme.sidebarBackground, in: RoundedRectangle(cornerRadius: 14))
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressableStyle(hapticsEnabled: false))
+        .buttonStyle(.pressable)
         .contextMenu {
             Button {
                 guard isCurrent(target) else { return }
@@ -380,7 +380,7 @@ struct HomeSidebar: View {
             .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressableStyle(hapticsEnabled: false))
+        .buttonStyle(.pressable)
         .accessibilityIdentifier("sidebar-history-retry")
     }
 

@@ -225,6 +225,7 @@ final class SpeechService {
             try await Task.detached(priority: .userInitiated) {
                 let session = AVAudioSession.sharedInstance()
                 try session.setCategory(.playAndRecord, mode: .spokenAudio, options: .duckOthers)
+                try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
             }.value
 

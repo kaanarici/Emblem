@@ -118,6 +118,7 @@ struct TimeAskView: View {
         }
         .blockStoreMutationControl()
         .buttonStyle(.pressable)
+        .sensoryFeedback(EmblemHaptic.select, trigger: selected) { _, new in new }
     }
 
     private func apply(time string: String) {

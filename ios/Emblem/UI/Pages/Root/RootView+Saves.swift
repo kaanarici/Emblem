@@ -46,6 +46,7 @@ extension RootView {
             } else {
                 pendingVisibleSave = PendingVisibleSave(page: page, scope: scope)
             }
+            pageSaveTaps += 1
         } catch {
             pageSaveError = "The page couldn't be saved on this device. Try again."
         }

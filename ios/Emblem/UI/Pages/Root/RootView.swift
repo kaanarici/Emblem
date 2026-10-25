@@ -135,6 +135,7 @@ struct RootView: View {
     @State var homeFailureToastID: UUID?
     @Namespace var toolbarGlassNamespace
     @State var pendingVisibleSave: PendingVisibleSave?
+    @State var pageSaveTaps = 0
 
     struct PendingVisibleSave {
         let page: GeneratedPage
@@ -349,19 +350,8 @@ struct RootView: View {
             .clipShape(foregroundShape)
             .offset(x: sidebarOffset)
             .shadow(color: .black.opacity(0.12 * sidebarProgress), radius: 22, x: -3)
-            .sensoryFeedback(trigger: speech.phase) { old, new in
-                switch (old, new) {
-                case (.idle, .held): .impact(flexibility: .soft, intensity: 0.8)
-                case (.held, .locked): .impact(weight: .medium)
-                default: nil
-                }
-            }
-            .sensoryFeedback(.impact(weight: .light), trigger: store.isGenerating) { old, new in !old && new }
-            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.6), trigger: store.pages.count) { old, new in
-                new > old
-            }
-            .sensoryFeedback(.error, trigger: store.failureCount)
-            .sensoryFeedback(.selection, trigger: showSidebar)
+            .sensoryFeedback(EmblemHaptic.send, trigger: store.isGenerating) { old, new in !old && new }
+            .sensoryFeedback(EmblemHaptic.failed, trigger: store.failureCount)
             .gesture(SidebarOpeningPanGesture(
                 isEnabled: !mapIsTopmost && primaryDestination == nil && !(settingsIsTopmost && settingsSubpagePushed) && (primaryIsTopmost || (primaryRoot == nil && isHomePage)) && !showSidebar && store.dockState == .idle && speech.phase == .idle,
                 onChanged: updateSidebarOpening,

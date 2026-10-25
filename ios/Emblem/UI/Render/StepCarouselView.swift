@@ -108,7 +108,7 @@ struct StepCarouselView: View {
                 containerWidth = $0
             }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: indicatorHapticState) { old, new in
+        .sensoryFeedback(EmblemHaptic.select, trigger: indicatorHapticState) { old, new in
             abs(new - old) == 1 && max(new, old) % 2 == 1
         }
     }

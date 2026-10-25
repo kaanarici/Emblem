@@ -81,7 +81,7 @@ struct HomeControlCardView: View {
         .buttonStyle(.pressable)
         .blockActivationControl()
         .groupedRowShadow()
-        .sensoryFeedback(.impact(weight: .light), trigger: on)
+        .sensoryFeedback(EmblemHaptic.toggle, trigger: on)
         .animation(.smooth(duration: 0.2), value: on)
         .accessibilityLabel(accessory.name)
         .accessibilityValue(on ? "On" : "Off")
