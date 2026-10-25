@@ -27,6 +27,11 @@ final class NavigationJourneyTests: JourneyTestCase {
         XCTAssertTrue(pinned.waitForExistence(timeout: 10), "Home shows no recent chats")
         XCTAssertTrue(recent.waitForExistence(timeout: 5))
         XCTAssertLessThan(pinned.frame.minX, recent.frame.minX, "The pin is not first")
+        XCTAssertEqual(pinned.label.components(separatedBy: "Kept chat").count, 2, "The preview repeats the title")
+        let unpin = element("home-unpin-kept")
+        tap(unpin)
+        XCTAssertTrue(unpin.waitForNonExistence(timeout: 3), "The pin badge stayed after unpinning")
+        XCTAssertGreaterThan(pinned.frame.minX, recent.frame.minX, "The unpinned chat did not move behind the newer one")
         if !recent.isHittable {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -260)))
@@ -34,6 +39,7 @@ final class NavigationJourneyTests: JourneyTestCase {
         tap(recent)
         XCTAssertTrue(text(containing: "Your launch review begins at 2:00 PM").waitForExistence(timeout: 10))
         XCTAssertTrue(server.prompts.isEmpty, "Opening a recent chat generated a new page")
+        XCTAssertFalse(server.pinnedKeys.contains("kept"), "Unpinning never reached the server")
     }
 
     func testSidebarKeepsPinsFirstAndLoadsOlderConversationsAsItScrolls() throws {
@@ -83,7 +89,9 @@ final class NavigationJourneyTests: JourneyTestCase {
         XCTAssertTrue(element("home-greeting").waitForExistence(timeout: 10))
 
         openSidebar()
-        tap(app.buttons["sidebar-settings"])
+        let settings = app.buttons["sidebar-settings"]
+        XCTAssertGreaterThan(settings.frame.minY, app.frame.height * 0.8, "Settings is out of thumb reach")
+        tap(settings)
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 6))
 
         let row = app.buttons["Apple Intelligence"].firstMatch

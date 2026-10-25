@@ -1,4 +1,5 @@
 import Network
+import UIKit
 import XCTest
 
 @MainActor
@@ -72,17 +73,19 @@ final class StubServer: @unchecked Sendable {
         let fixture: String
         var pinned = false
         var pages = 1
+        var artwork = false
     }
 
     private let listener: NWListener
     private let lock = NSLock()
     private var replies: [String]
-    private let history: [Conversation]
+    private var history: [Conversation]
     private let listPageSize: Int
     private var received: [String] = []
     private(set) var url = ""
 
     var prompts: [String] { lock.withLock { received } }
+    var pinnedKeys: [String] { lock.withLock { history.filter(\.pinned).map(\.key) } }
 
     init(replies: [String] = ["natural-evidence"], history: [Conversation] = [], listPageSize: Int = 50) throws {
         self.replies = replies
@@ -131,12 +134,20 @@ final class StubServer: @unchecked Sendable {
             let target = head.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
             let body = request[boundary.upperBound..<(boundary.upperBound + length)]
             let (type, payload) = respond(to: URLComponents(string: target), body: Data(body))
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nContent-Length: \(payload.utf8.count)\r\nConnection: close\r\n\r\n\(payload)"
-            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+            let status = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
+            connection.send(content: Data(status.utf8) + payload, completion: .contentProcessed { _ in connection.cancel() })
         }
     }
 
-    private func respond(to target: URLComponents?, body: Data) -> (String, String) {
+    private func respond(to target: URLComponents?, body: Data) -> (String, Data) {
+        if let path = target?.path, path.hasPrefix("/art/") {
+            return ("image/png", Self.artwork(seed: path.unicodeScalars.reduce(0) { $0 + Int($1.value) }))
+        }
+        let (type, text) = respondText(to: target, body: body)
+        return (type, Data(text.utf8))
+    }
+
+    private func respondText(to target: URLComponents?, body: Data) -> (String, String) {
         switch target?.path {
         case "/api/generate":
             let fixture = lock.withLock {
@@ -150,12 +161,22 @@ final class StubServer: @unchecked Sendable {
                 {"type":"terminal","status":"completed","revision":1,"blockCount":\(blocks.count),"persisted":false}
 
                 """)
+        case "/api/conversation":
+            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: String] ?? [:]
+            lock.withLock {
+                guard let index = history.firstIndex(where: { $0.key == json["conversationKey"] }) else { return }
+                if json["action"] == "pin" { history[index].pinned = true }
+                if json["action"] == "unpin" { history[index].pinned = false }
+            }
+            return ("application/json", "{}")
         case "/api/conversations":
             let now = Int(Date().timeIntervalSince1970 * 1000)
             let row = { (index: Int, item: Conversation) in
                 let pin = item.pinned ? #","pinnedAt":\#(now)"# : ""
-                return #"{"key":"\#(item.key)","title":"\#(item.title)","updatedAt":\#(now - index * 60_000),"archived":false\#(pin),"preview":"\#(item.title)"}"#
+                let art = item.artwork ? #","image":{"query":"\#(item.title)","kind":"photo"},"imageURL":"\#(self.url)/art/\#(item.key).png""# : ""
+                return #"{"key":"\#(item.key)","title":"\#(item.title)","updatedAt":\#(now - index * 60_000),"archived":false\#(pin)\#(art),"preview":"\#(item.title)"}"#
             }
+            let history = lock.withLock { self.history }
             let offset = Int(Self.query("cursor", in: target) ?? "") ?? 0
             let unpinned = Array(history.enumerated().filter { !$0.element.pinned })
             let page = unpinned.dropFirst(offset).prefix(listPageSize)
@@ -163,7 +184,7 @@ final class StubServer: @unchecked Sendable {
             let next = offset + page.count < unpinned.count ? #""\#(offset + page.count)""# : "null"
             return ("application/json", #"{"pinned":[\#(pinned.joined(separator: ","))],"conversations":[\#(page.map(row).joined(separator: ","))],"nextCursor":\#(next)}"#)
         case "/api/history":
-            guard let item = history.first(where: { $0.key == Self.query("conversationKey", in: target) }) else {
+            guard let item = lock.withLock({ history }).first(where: { $0.key == Self.query("conversationKey", in: target) }) else {
                 return ("application/json", #"{"pages":[],"nextCursor":null}"#)
             }
             guard item.pages > 1 else {
@@ -179,6 +200,18 @@ final class StubServer: @unchecked Sendable {
             return ("application/json", #"{"pages":[\#(pages.joined(separator: ","))],"nextCursor":\#(next)}"#)
         default:
             return ("application/json", #"{"enabled":false,"toolkits":[],"agents":[],"pinned":[],"conversations":[],"pages":[],"nextCursor":null}"#)
+        }
+    }
+
+    private static func artwork(seed: Int) -> Data {
+        let hues: [CGFloat] = [0.58, 0.08, 0.36, 0.83, 0.15]
+        let hue = hues[seed % hues.count]
+        let size = CGSize(width: 330, height: 428)
+        return UIGraphicsImageRenderer(size: size).pngData { context in
+            let colors = [UIColor(hue: hue, saturation: 0.55, brightness: 0.85, alpha: 1).cgColor,
+                          UIColor(hue: hue + 0.08, saturation: 0.7, brightness: 0.45, alpha: 1).cgColor]
+            guard let gradient = CGGradient(colorsSpace: nil, colors: colors as CFArray, locations: [0, 1]) else { return }
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
         }
     }
 

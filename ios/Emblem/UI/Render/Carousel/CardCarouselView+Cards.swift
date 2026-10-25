@@ -32,6 +32,13 @@ extension CardCarouselView {
             if block.id == "recent" {
                 homeContinueCard(card)
                     .accessibilityIdentifier("home-recent-\(card.conversation ?? card.title)")
+                    .overlay(alignment: .topTrailing) {
+                        if let key = card.conversation {
+                            CarouselPinButton(
+                                conversation: key, title: card.title,
+                                tint: isTextContinueCard(card) ? Theme.ink : .white)
+                        }
+                    }
             } else {
                 managedCard(card)
             }
@@ -157,7 +164,7 @@ extension CardCarouselView {
 
     @ViewBuilder
     private func homeContinueCard(_ card: CardCarousel.Card) -> some View {
-        if card.image == nil, card.imageURL.flatMap(URL.init(string:)) == nil, card.icon == nil {
+        if isTextContinueCard(card) {
             textContinueCard(card)
         } else {
             let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -239,6 +246,10 @@ extension CardCarouselView {
         .buttonStyle(PressableStyle(hapticsEnabled: card.conversation == nil))
         .textSelection(.disabled)
         .modifier(CardMenu(card: card))
+    }
+
+    private func isTextContinueCard(_ card: CardCarousel.Card) -> Bool {
+        card.image == nil && card.imageURL.flatMap(URL.init(string:)) == nil && card.icon == nil
     }
 
     func singleCard(_ card: CardCarousel.Card) -> some View {

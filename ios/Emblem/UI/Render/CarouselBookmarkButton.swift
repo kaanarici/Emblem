@@ -35,11 +35,11 @@ struct CarouselBookmarkButton: View {
             blockID: blockID, sourceCardKey: sourceCardKey))
     }
 
-    private var glyphSize: CGFloat {
+    static func glyphSize(_ presentation: CardCarousel.Presentation) -> CGFloat {
         presentation == .paged ? 28 : presentation == .poster ? 24 : 20
     }
 
-    private var hitSize: CGFloat {
+    static func hitSize(_ presentation: CardCarousel.Presentation) -> CGFloat {
         presentation == .paged ? 52 : presentation == .poster ? 48 : 36
     }
 
@@ -47,12 +47,12 @@ struct CarouselBookmarkButton: View {
     var body: some View {
         if let page = renderedPage, !page.isHome {
             Button(action: toggleBookmark) {
-                WhiteCardBookmarkGlyph(
-                    isSaved: isSaved,
-                    size: glyphSize,
+                CardBadgeGlyph(
+                    isOn: isSaved,
+                    size: Self.glyphSize(presentation),
                     isPaged: presentation == .paged)
                     .foregroundStyle(.white)
-                    .frame(width: hitSize, height: hitSize)
+                    .frame(width: Self.hitSize(presentation), height: Self.hitSize(presentation))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
@@ -107,6 +107,39 @@ struct CarouselBookmarkButton: View {
     }
 }
 
+struct CarouselPinButton: View {
+    let conversation: String
+    let title: String
+    let tint: Color
+
+    @Environment(ConversationStore.self) private var store
+    @Environment(\.blockInteraction) private var blockInteraction
+    @State private var history = ConversationHistory.shared
+
+    private var isPinned: Bool {
+        history.summary(for: conversation)?.isPinned == true
+    }
+
+    var body: some View {
+        Button {
+            guard isPinned, blockInteraction.allowsStoreMutation else { return }
+            store.setConversationPinned(key: conversation, pinned: false)
+        } label: {
+            CardBadgeGlyph(mark: .pin, isOn: isPinned, size: CarouselBookmarkButton.glyphSize(.standard), tint: tint)
+                .transaction(value: isPinned) { $0.animation = nil }
+                .frame(width: CarouselBookmarkButton.hitSize(.standard), height: CarouselBookmarkButton.hitSize(.standard))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .blockStoreMutationControl()
+        .opacity(isPinned ? 1 : 0)
+        .allowsHitTesting(isPinned)
+        .accessibilityHidden(!isPinned)
+        .accessibilityLabel("Unpin \(title)")
+        .accessibilityIdentifier("home-unpin-\(conversation)")
+    }
+}
+
 private struct CompactWhiteCardBookmarkOutline: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
@@ -131,28 +164,44 @@ private struct CompactWhiteCardBookmarkOutline: Shape {
     }
 }
 
-private struct WhiteCardBookmarkGlyph: View {
-    let isSaved: Bool
+private struct CardBadgeGlyph: View {
+    enum Mark { case bookmark, pin }
+
+    var mark = Mark.bookmark
+    let isOn: Bool
     let size: CGFloat
-    let isPaged: Bool
+    var isPaged = false
+    var tint = Color.white
 
     private var shape: WhiteCardBookmarkShape {
         WhiteCardBookmarkShape(verticalCompression: isPaged ? 0.99 : 1)
     }
 
     var body: some View {
-        shape
-            .fill(.black.opacity(0.2))
-            .overlay {
+        Group {
+            switch mark {
+            case .bookmark:
                 shape
-                    .fill(.white.opacity(isSaved ? 0.95 : 0))
+                    .fill(.black.opacity(0.2))
+                    .overlay {
+                        shape
+                            .fill(tint.opacity(isOn ? 0.95 : 0))
+                    }
+                    .overlay {
+                        shape
+                            .stroke(tint, style: StrokeStyle(lineWidth: isPaged ? 2.1 : 1.25 * size / 20, lineCap: .round, lineJoin: .round))
+                    }
+            case .pin:
+                Image(systemName: "pin.fill")
+                    .foregroundStyle(.black.opacity(0.2))
+                    .overlay { Image(systemName: "pin.fill").foregroundStyle(tint.opacity(isOn ? 0.95 : 0)) }
+                    .overlay { Image(systemName: "pin").foregroundStyle(tint) }
+                    .font(.system(size: size * 0.75))
+                    .rotationEffect(.degrees(45))
             }
-            .overlay {
-                shape
-                    .stroke(.white, style: StrokeStyle(lineWidth: isPaged ? 2.1 : 1.25 * size / 20, lineCap: .round, lineJoin: .round))
-            }
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 

@@ -278,12 +278,19 @@ struct PageView: View {
                     image: item.artwork?.image, imageURL: item.artwork?.imageURL ?? item.legacyArtworkURL,
                     icon: nil, title: item.title,
                     caption: item.date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)),
-                    preview: item.preview, prompt: nil, conversation: item.key, automation: nil)
+                    preview: Self.distinctPreview(item.preview, title: item.title),
+                    prompt: nil, conversation: item.key, automation: nil)
             })),
         ]
     }
 
     private static let recentRailLimit = 8
+
+    private static func distinctPreview(_ preview: String?, title: String) -> String? {
+        let words = { (text: String) in text.lowercased().split(whereSeparator: \.isWhitespace) }
+        guard let preview, words(preview) != words(title) else { return nil }
+        return preview
+    }
 
     private static func inserting(_ rail: [Block], into blocks: [Block], before id: String) -> [Block] {
         var blocks = blocks

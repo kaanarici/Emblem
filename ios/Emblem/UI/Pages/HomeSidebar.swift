@@ -58,7 +58,7 @@ struct HomeSidebar: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.top, topInset + 86)
+                .padding(.top, topInset + 12)
                 .padding(.bottom, 150)
                 .transaction(value: history.epoch) { transaction in
                     transaction.animation = nil
@@ -74,8 +74,14 @@ struct HomeSidebar: View {
             }
 
             VStack(spacing: 0) {
-                SidebarHeader(topInset: topInset, selected: isSettingsSelected, isVisible: isVisible, onSettings: onSettings)
+                VariableBlurView(maxBlurRadius: 8, direction: .blurredTopClearBottom)
+                    .frame(height: topInset + 12)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 Spacer()
+                SidebarAccount(selected: isSettingsSelected, isVisible: isVisible, onSettings: onSettings)
+                    .frame(height: DockView.controlSize)
+                    .padding(.bottom, bottomInset)
             }
         }
         .foregroundStyle(Theme.ink)
@@ -271,69 +277,47 @@ private struct SidebarHomeGlyph: View {
     }
 }
 
-private struct SidebarHeader: View {
+private struct SidebarAccount: View {
     @Environment(AuthStore.self) private var auth
 
-    let topInset: CGFloat
     let selected: Bool
     let isVisible: Bool
     let onSettings: () -> Void
 
     var body: some View {
-        ZStack(alignment: .top) {
-            VariableBlurView(maxBlurRadius: 8, direction: .blurredTopClearBottom)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            VStack(spacing: 12) {
-                Button(action: onSettings) { account }
-                    .buttonStyle(.pressable)
-                    .accessibilityRepresentation {
-                        if isVisible {
-                            Button(action: onSettings) { account }
-                                .accessibilityIdentifier("sidebar-settings")
-                                .accessibilityHint("Opens Settings and connections")
-                                .accessibilityAddTraits(selected ? .isSelected : [])
-                        }
-                    }
-                Divider().padding(.horizontal, 8)
+        Button(action: onSettings) { account }
+            .buttonStyle(.pressable)
+            .accessibilityRepresentation {
+                if isVisible {
+                    Button(action: onSettings) { account }
+                        .accessibilityIdentifier("sidebar-settings")
+                        .accessibilityHint("Opens Settings and connections")
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, topInset + 12)
-        }
-        .frame(height: topInset + 84, alignment: .top)
+            .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
+                width / 2 - DockView.newPageWidth / 2 - 16
+            }
+            .padding(.leading, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var name: String? {
+        auth.greetingName ?? auth.displayName ?? auth.email
     }
 
     private var account: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             profileCircle
-            VStack(alignment: .leading, spacing: 3) {
-                Text(auth.displayName ?? auth.greetingName ?? AppInfo.name)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                if let email = auth.email {
-                    Text(email)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .lineLimit(1)
-                } else if !auth.isSignedIn {
-                    Text("Guest")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.inkSecondary)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("sidebar-account")
-            Spacer(minLength: 0)
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 17, weight: .regular))
+            Text(name ?? "Guest")
+                .font(.system(size: 16))
                 .foregroundStyle(Theme.ink)
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
+                .lineLimit(1)
+                .accessibilityIdentifier("sidebar-account")
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity)
-        .frame(height: 52)
+        .padding(.horizontal, 10)
+        .frame(height: DockView.innerControlSize)
         .background(selected ? Theme.ink.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 14))
         .contentShape(Rectangle())
     }
@@ -345,16 +329,27 @@ private struct SidebarHeader: View {
                     if let image = phase.image {
                         image.resizable().scaledToFill()
                     } else {
-                        EmblemLogo(size: 18)
+                        initial
                     }
                 }
             } else {
-                EmblemLogo(size: 18)
+                initial
             }
         }
-        .frame(width: 24, height: 24)
+        .frame(width: 28, height: 28)
         .background(Theme.ink.opacity(0.08), in: Circle())
         .clipShape(Circle())
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var initial: some View {
+        if let letter = name?.first {
+            Text(String(letter).uppercased())
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+        } else {
+            EmblemLogo(size: 20)
+        }
     }
 }
