@@ -6,13 +6,21 @@ import { api } from "@/convex/_generated/api";
 import type { Block } from "./schema";
 import { ownerScopeInput } from "./signing";
 import { hasExpectedMagicBytes, MAX_IMAGE_BYTES } from "./imageBytes";
+import {
+  drawFal,
+  drawGemini,
+  generateOnce,
+  imageProvider,
+  isSupportedMimeType,
+  type DrawOptions,
+  type GeneratedImage,
+  type GenerationJob,
+  type ImageProvider,
+} from "./imageGeneration";
 
 const GENERATED_STEP_IMAGE_QUERY_PREFIX = "emblem-step-image.v1.";
 const GENERATED_STEP_IMAGE_STYLE_VERSION = "instructional-3d-v4";
 
-const GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image";
-const GEMINI_IMAGE_ENDPOINT = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_IMAGE_MODEL}:generateContent`;
-const DEFAULT_GENERATION_DEADLINE_MS = 25_000;
 const STORED_IMAGE_SIZE = 768;
 const DEFAULT_VISUAL_CONTINUITY =
   "keep the same physical subject, tools, materials, proportions, camera position, and accumulated construction state across the sequence";
@@ -20,7 +28,6 @@ const PRIVATE_VISUAL_PATTERN =
   /(?:https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}|@\w{2,}|\+?\d[\d\s().-]{7,}\d|\b(?:api[ _-]?key|password|secret|access[ _-]?token)\b)/i;
 const PERSONAL_REFERENCE_PATTERN = /\b(?:my|our|mine|ours)\b/i;
 const HEX_KEY = /^[a-f0-9]{64}$/;
-const inFlight = new Map<string, Promise<void>>();
 
 type GeneratedStepDescriptor = {
   version: typeof GENERATED_STEP_IMAGE_STYLE_VERSION;
@@ -30,20 +37,15 @@ type GeneratedStepDescriptor = {
   continuity: string;
 };
 
-export type GeneratedStepImage = {
-  bytes: Uint8Array;
-  mimeType: "image/png" | "image/jpeg" | "image/webp";
-};
-
 type StoredGeneratedStepImage = {
   url: string;
-  mimeType: GeneratedStepImage["mimeType"];
+  mimeType: GeneratedImage["mimeType"];
   byteLength: number;
 };
 
 export type GeneratedStepImageStore = {
   get(key: string, ownerScopeHash?: string): Promise<StoredGeneratedStepImage | null>;
-  put(key: string, image: GeneratedStepImage, ownerScopeHash?: string): Promise<void>;
+  put(key: string, image: GeneratedImage, ownerScopeHash?: string): Promise<void>;
 };
 
 type PrepareGeneratedStepImagesOptions = {
@@ -51,13 +53,12 @@ type PrepareGeneratedStepImagesOptions = {
   tokenSecret: string;
 };
 
-type ResolveGeneratedStepImageOptions = {
+type ResolveGeneratedStepImageOptions = Pick<
+  GenerationJob,
+  "admit" | "fetch" | "deadlineMs" | "signal"
+> & {
   tokenSecret?: string;
-  apiKey?: string;
   store?: GeneratedStepImageStore;
-  fetch?: typeof fetch;
-  deadlineMs?: number;
-  signal?: AbortSignal;
 };
 
 export function prepareGeneratedStepImages(
@@ -127,48 +128,30 @@ export function generatedStepImageURL(cacheKey: string): string {
 
 export async function resolveGeneratedStepImageQuery(
   query: string,
-  options: ResolveGeneratedStepImageOptions = {},
+  {
+    tokenSecret = generatedStepImageTokenSecret(),
+    store,
+    ...options
+  }: ResolveGeneratedStepImageOptions,
 ): Promise<string | null> {
-  if (!isGeneratedStepImageQuery(query)) return null;
-  const tokenSecret = options.tokenSecret ?? generatedStepImageTokenSecret();
-  const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
-  if (!tokenSecret || !apiKey) return null;
+  if (!isGeneratedStepImageQuery(query) || !tokenSecret || !imageProvider()) return null;
   if (
-    !options.store &&
+    !store &&
     (!process.env.NEXT_PUBLIC_CONVEX_URL || !process.env.GENERATED_STEP_IMAGE_STORAGE_SECRET)
   ) {
     return null;
   }
-
   const descriptor = openDescriptor(query, tokenSecret);
   if (!descriptor) return null;
-  const store = options.store ?? generatedStepImageStore;
-  if (await store.get(descriptor.cacheKey, descriptor.ownerScopeHash)) {
-    return generatedStepImageURL(descriptor.cacheKey);
-  }
-
-  let pending = inFlight.get(descriptor.cacheKey);
-  if (!pending) {
-    pending = generateAndStore(descriptor, {
-      apiKey,
-      store,
-      fetch: options.fetch ?? fetch,
-      deadlineMs: options.deadlineMs ?? DEFAULT_GENERATION_DEADLINE_MS,
-      signal: options.signal,
-    });
-    inFlight.set(descriptor.cacheKey, pending);
-  }
-
-  try {
-    await pending;
-    return generatedStepImageURL(descriptor.cacheKey);
-  } catch {
-    return null;
-  } finally {
-    if (inFlight.get(descriptor.cacheKey) === pending) {
-      inFlight.delete(descriptor.cacheKey);
-    }
-  }
+  const stored = await generateOnce({
+    ...options,
+    key: descriptor.cacheKey,
+    ownerScopeHash: descriptor.ownerScopeHash,
+    store: store ?? generatedStepImageStore,
+    draw: (provider, drawOptions) =>
+      drawStepImage(provider, styledPrompt(descriptor.scene, descriptor.continuity), drawOptions),
+  });
+  return stored ? generatedStepImageURL(descriptor.cacheKey) : null;
 }
 
 export async function readGeneratedStepImage(
@@ -177,63 +160,6 @@ export async function readGeneratedStepImage(
 ): Promise<StoredGeneratedStepImage | null> {
   if (!HEX_KEY.test(cacheKey)) return null;
   return await store.get(cacheKey);
-}
-
-async function generateGeminiStepImage(
-  scene: string,
-  continuity: string,
-  options: {
-    apiKey: string;
-    fetch?: typeof fetch;
-    deadlineMs?: number;
-    signal?: AbortSignal;
-  },
-): Promise<GeneratedStepImage> {
-  return generateGeminiImage(styledPrompt(scene, continuity), options);
-}
-
-export async function generateGeminiImage(
-  prompt: string,
-  options: {
-    apiKey: string;
-    fetch?: typeof fetch;
-    deadlineMs?: number;
-    signal?: AbortSignal;
-  },
-): Promise<GeneratedStepImage> {
-  const deadline = AbortSignal.timeout(options.deadlineMs ?? DEFAULT_GENERATION_DEADLINE_MS);
-  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
-  const response = await (options.fetch ?? fetch)(GEMINI_IMAGE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": options.apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ["IMAGE"],
-        imageConfig: {
-          aspectRatio: "1:1",
-          imageSize: "1K",
-        },
-      },
-    }),
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Gemini image generation failed (${response.status})`);
-  }
-
-  const payload: unknown = await response.json();
-  const image = inlineImage(payload);
-  if (!image) throw new Error("Gemini image generation returned no image");
-  return image;
 }
 
 export const generatedStepImageStore: GeneratedStepImageStore = {
@@ -447,25 +373,17 @@ function styledPrompt(scene: string, continuity: string): string {
   ].join(" ");
 }
 
-async function generateAndStore(
-  descriptor: GeneratedStepDescriptor,
-  options: {
-    apiKey: string;
-    store: GeneratedStepImageStore;
-    fetch: typeof fetch;
-    deadlineMs: number;
-    signal?: AbortSignal;
-  },
-): Promise<void> {
-  const image = await generateGeminiStepImage(descriptor.scene, descriptor.continuity, options);
-  await options.store.put(
-    descriptor.cacheKey,
-    await compactStepImage(image),
-    descriptor.ownerScopeHash,
-  );
+async function drawStepImage(
+  provider: ImageProvider,
+  prompt: string,
+  options: DrawOptions,
+): Promise<GeneratedImage> {
+  if (provider === "gemini") return compactStepImage(await drawGemini(prompt, options));
+  const bytes = await drawFal(prompt, `${STORED_IMAGE_SIZE}x${STORED_IMAGE_SIZE}`, options);
+  return compactStepImage({ bytes, mimeType: "image/png" });
 }
 
-async function compactStepImage(image: GeneratedStepImage): Promise<GeneratedStepImage> {
+async function compactStepImage(image: GeneratedImage): Promise<GeneratedImage> {
   try {
     const bytes = await sharp(Buffer.from(image.bytes))
       .resize(STORED_IMAGE_SIZE, STORED_IMAGE_SIZE, { fit: "inside", withoutEnlargement: true })
@@ -479,53 +397,6 @@ async function compactStepImage(image: GeneratedStepImage): Promise<GeneratedSte
   }
 }
 
-function inlineImage(payload: unknown): GeneratedStepImage | null {
-  if (!payload || typeof payload !== "object") return null;
-  const candidates = (payload as { candidates?: unknown }).candidates;
-  if (!Array.isArray(candidates)) return null;
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const content = (candidate as { content?: unknown }).content;
-    if (!content || typeof content !== "object") continue;
-    const parts = (content as { parts?: unknown }).parts;
-    if (!Array.isArray(parts)) continue;
-    for (const part of parts) {
-      if (!part || typeof part !== "object") continue;
-      const inlineData =
-        (part as { inlineData?: unknown }).inlineData ??
-        (part as { inline_data?: unknown }).inline_data;
-      if (!inlineData || typeof inlineData !== "object") continue;
-      const mimeType =
-        (inlineData as { mimeType?: unknown }).mimeType ??
-        (inlineData as { mime_type?: unknown }).mime_type;
-      const data = (inlineData as { data?: unknown }).data;
-      if (!isSupportedMimeType(mimeType) || typeof data !== "string") continue;
-      const compact = data.replace(/\s+/g, "");
-      if (
-        !compact ||
-        compact.length > Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 4 ||
-        !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)
-      ) {
-        continue;
-      }
-      const bytes = new Uint8Array(Buffer.from(compact, "base64"));
-      const image = { bytes, mimeType };
-      if (
-        bytes.byteLength > 0 &&
-        bytes.byteLength <= MAX_IMAGE_BYTES &&
-        hasExpectedMagicBytes(image.bytes, image.mimeType)
-      ) {
-        return image;
-      }
-    }
-  }
-  return null;
-}
-
-function isSupportedMimeType(value: unknown): value is GeneratedStepImage["mimeType"] {
-  return value === "image/png" || value === "image/jpeg" || value === "image/webp";
-}
-
 function generatedImageConvexClient(): ConvexHttpClient | null {
   const convexURL = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
   return convexURL ? new ConvexHttpClient(convexURL) : null;
@@ -534,7 +405,7 @@ function generatedImageConvexClient(): ConvexHttpClient | null {
 function storageGrantPayload(
   ownerScopeHash: string,
   key: string,
-  mimeType: GeneratedStepImage["mimeType"],
+  mimeType: GeneratedImage["mimeType"],
   byteLength: number,
   digest: string,
 ): string {

@@ -1,14 +1,21 @@
 import { createHash } from "node:crypto";
-import { createFal } from "@ai-sdk/fal";
-import { generateImage } from "ai";
 import sharp from "sharp";
 
+import {
+  cutoutFal,
+  drawFal,
+  drawGemini,
+  generateOnce,
+  imageProvider,
+  type DrawOptions,
+  type GeneratedImage,
+  type GenerationJob,
+  type ImageProvider,
+} from "./imageGeneration";
 import { objectIconNoun } from "./objectIconNoun";
 import {
-  generateGeminiImage,
   generatedStepImageStore,
   generatedStepImageURL,
-  type GeneratedStepImage,
   type GeneratedStepImageStore,
 } from "./generatedStepImages";
 
@@ -16,9 +23,6 @@ const OBJECT_ICON_VERSION = "object-icon-v3";
 
 const ICON_SIZE = 256;
 const WORK_SIZE = ICON_SIZE * 2;
-const DEADLINE_MS = 25_000;
-const inFlight = new Map<string, Promise<string | null>>();
-
 const iconStyle = (noun: string) =>
   `A single 3D icon of ${noun}, matching a premium soft-3D emoji icon set. ` +
   "Slightly chunky, simplified toy-like proportions with generously rounded, softened edges, like a high-end 3D emoji, not a photoreal product render. " +
@@ -41,80 +45,39 @@ const FAL_ICON_PROMPT = (noun: string) =>
   "Keep the complete object crisply separated from the background with generous clear padding and no cropping. " +
   ICON_TAIL;
 
-type GenerateOptions = { deadlineMs: number; signal?: AbortSignal; fetch?: typeof fetch };
-type ObjectIconGenerator = {
-  available: () => boolean;
-  generate: (noun: string, options: GenerateOptions) => Promise<GeneratedStepImage>;
-};
-
-const falKey = () => (process.env.FAL_KEY ?? process.env.FAL_API_KEY)?.trim();
-
-const generators: Record<"gemini" | "fal", ObjectIconGenerator> = {
-  gemini: {
-    available: () => Boolean(process.env.GEMINI_API_KEY?.trim()),
-    generate: async (noun, options) =>
-      removeMagentaBackground(
-        await generateGeminiImage(GEMINI_ICON_PROMPT(noun), {
-          ...options,
-          apiKey: process.env.GEMINI_API_KEY!.trim(),
-        }),
-      ),
-  },
-  fal: {
-    available: () => Boolean(falKey()),
-    generate: async (noun, { deadlineMs, signal }) => {
-      const abortSignal = signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)])
-        : AbortSignal.timeout(deadlineMs);
-      const fal = createFal({ apiKey: falKey() });
-      const { image } = await generateImage({
-        model: fal.image("fal-ai/flux-2/flash"),
-        prompt: FAL_ICON_PROMPT(noun),
-        size: "512x512",
-        providerOptions: {
-          fal: { outputFormat: "png", syncMode: true, enablePromptExpansion: false },
-        },
-        maxRetries: 0,
-        abortSignal,
-      });
-      const { image: cutout } = await generateImage({
-        model: fal.image("fal-ai/birefnet/v2"),
-        prompt: { images: [image.uint8Array] },
-        providerOptions: { fal: { outputFormat: "png", syncMode: true } },
-        maxRetries: 0,
-        abortSignal,
-      });
-      const bytes = await sharp(Buffer.from(cutout.uint8Array))
-        .resize(ICON_SIZE, ICON_SIZE, {
-          fit: "contain",
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        })
-        .png()
-        .toBuffer();
-      return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
-    },
+const draws: Record<
+  ImageProvider,
+  (noun: string, options: DrawOptions) => Promise<GeneratedImage>
+> = {
+  gemini: async (noun, options) =>
+    removeMagentaBackground(await drawGemini(GEMINI_ICON_PROMPT(noun), options)),
+  fal: async (noun, options) => {
+    const image = await drawFal(FAL_ICON_PROMPT(noun), "512x512", options);
+    const bytes = await sharp(Buffer.from(await cutoutFal(image, options)))
+      .resize(ICON_SIZE, ICON_SIZE, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+    return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
   },
 };
 
-function objectIconGenerator(): ObjectIconGenerator {
-  const chosen = process.env.OBJECT_ICON_PROVIDER?.trim();
-  if (chosen === "fal" || chosen === "gemini") return generators[chosen];
-  return generators.fal.available() ? generators.fal : generators.gemini;
-}
-
-type ResolveObjectIconOptions = {
+type ResolveObjectIconOptions = Pick<GenerationJob, "admit" | "fetch" | "deadlineMs" | "signal"> & {
   store?: GeneratedStepImageStore;
-  fetch?: typeof fetch;
-  deadlineMs?: number;
-  signal?: AbortSignal;
 };
+
+const storageConfigured = () =>
+  Boolean(process.env.NEXT_PUBLIC_CONVEX_URL && process.env.GENERATED_STEP_IMAGE_STORAGE_SECRET);
+
+const iconCacheKey = (noun: string) =>
+  createHash("sha256")
+    .update(`${OBJECT_ICON_VERSION}\0${noun.replace(/\b([a-z0-9]{2,}[a-hj-rtv-z0-9])s$/, "$1")}`)
+    .digest("hex");
 
 export function objectIconGenerationAvailable(): boolean {
-  return Boolean(
-    objectIconGenerator().available() &&
-    process.env.NEXT_PUBLIC_CONVEX_URL &&
-    process.env.GENERATED_STEP_IMAGE_STORAGE_SECRET,
-  );
+  return Boolean(imageProvider() && storageConfigured());
 }
 
 export async function cachedObjectIconURL(
@@ -122,61 +85,28 @@ export async function cachedObjectIconURL(
   store?: GeneratedStepImageStore,
 ): Promise<string | null> {
   const noun = objectIconNoun(query);
-  if (!noun) return null;
-  if (!process.env.NEXT_PUBLIC_CONVEX_URL || !process.env.GENERATED_STEP_IMAGE_STORAGE_SECRET)
-    return null;
-  const cacheKey = createHash("sha256").update(`${OBJECT_ICON_VERSION}\0${noun}`).digest("hex");
-  return (await (store ?? generatedStepImageStore).get(cacheKey))?.url ?? null;
+  if (!noun || !storageConfigured()) return null;
+  return (await (store ?? generatedStepImageStore).get(iconCacheKey(noun)))?.url ?? null;
 }
 
 export async function resolveObjectIconQuery(
   query: string,
-  options: ResolveObjectIconOptions = {},
+  { store = generatedStepImageStore, ...options }: ResolveObjectIconOptions,
 ): Promise<string | null> {
   const noun = objectIconNoun(query);
-  if (!noun) return null;
-  if (
-    !options.store &&
-    (!process.env.NEXT_PUBLIC_CONVEX_URL || !process.env.GENERATED_STEP_IMAGE_STORAGE_SECRET)
-  ) {
-    return null;
-  }
-
-  const cacheKey = createHash("sha256").update(`${OBJECT_ICON_VERSION}\0${noun}`).digest("hex");
-  const store = options.store ?? generatedStepImageStore;
-  let pending = inFlight.get(cacheKey);
-  if (!pending) {
-    pending = (async () => {
-      const cached = await store.get(cacheKey);
-      if (cached) return cached.url;
-
-      const generator = objectIconGenerator();
-      if (!generator.available()) return null;
-      const generated = await generator.generate(noun, {
-        fetch: options.fetch,
-        deadlineMs: options.deadlineMs ?? DEADLINE_MS,
-        signal: options.signal,
-      });
-      await store.put(cacheKey, generated);
-      try {
-        const stored = await store.get(cacheKey);
-        if (stored) return stored.url;
-      } catch {}
-      return generatedStepImageURL(cacheKey);
-    })();
-    inFlight.set(cacheKey, pending);
-  }
-
-  try {
-    return await pending;
-  } catch {
-    return null;
-  } finally {
-    if (inFlight.get(cacheKey) === pending) inFlight.delete(cacheKey);
-  }
+  if (!noun || (store === generatedStepImageStore && !storageConfigured())) return null;
+  const key = iconCacheKey(noun);
+  const stored = await generateOnce({
+    ...options,
+    key,
+    store,
+    draw: (provider, drawOptions) => draws[provider](noun, drawOptions),
+  });
+  if (!stored) return null;
+  return (await store.get(key).catch(() => null))?.url ?? generatedStepImageURL(key);
 }
 
-async function removeMagentaBackground(image: GeneratedStepImage): Promise<GeneratedStepImage> {
+async function removeMagentaBackground(image: GeneratedImage): Promise<GeneratedImage> {
   const { data, info } = await sharp(Buffer.from(image.bytes))
     .resize(WORK_SIZE, WORK_SIZE, { fit: "cover" })
     .ensureAlpha()

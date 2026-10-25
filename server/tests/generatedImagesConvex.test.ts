@@ -204,6 +204,9 @@ describe("generated image ownership and storage", () => {
     calls.query.mockImplementation((ref, args) => t.query(ref, args));
     calls.action.mockImplementation((ref, args) => t.action(ref, args));
     vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "https://local-test.convex.cloud");
+    vi.stubEnv("GEMINI_API_KEY", "synthetic-only");
+    vi.stubEnv("FAL_KEY", "");
+    vi.stubEnv("IMAGE_PROVIDER", "");
     const tokenSecret = "synthetic-sealing-secret";
     const [block] = prepareGeneratedStepImages(
       [
@@ -237,8 +240,8 @@ describe("generated image ownership and storage", () => {
     );
     const url = await resolveGeneratedStepImageQuery(query, {
       tokenSecret,
-      apiKey: "synthetic-only",
       fetch: provider,
+      admit: async () => true,
     });
     expect(url).toMatch(/^\/api\/generated-step-image\?key=[a-f0-9]{64}$/);
     const row = await t.run((ctx) => ctx.db.query("generatedImages").first());
@@ -259,8 +262,8 @@ describe("generated image ownership and storage", () => {
     expect(
       await resolveGeneratedStepImageQuery(query, {
         tokenSecret,
-        apiKey: "synthetic-only",
         fetch: provider,
+        admit: async () => true,
       }),
     ).toBeNull();
     expect(

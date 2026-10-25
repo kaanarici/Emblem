@@ -4,10 +4,7 @@ import { logError } from "./log";
 import { createHash, createHmac } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import {
-  isGeneratedStepImageQuery,
-  resolveGeneratedStepImageQuery,
-} from "@/lib/generatedStepImages";
+import { isGeneratedStepImageQuery } from "@/lib/generatedStepImages";
 import { fitsAspect, probeImageCandidates } from "@/lib/imageVerify";
 import type { Block } from "@/lib/schema";
 import type { ImageAspect } from "@/lib/blockPrimitives";
@@ -277,12 +274,7 @@ function withHarvestDeadline(
 
 const warming = new Set<string>();
 export function warmImage(query: string, kind: string, aspect?: ImageAspect): void {
-  if (kind === "object") return;
-  if (kind === "generated" && isGeneratedStepImageQuery(query)) {
-    void resolveGeneratedStepImageQuery(query);
-    return;
-  }
-  if (kind === "generated" || isGeneratedStepImageQuery(query)) return;
+  if (kind === "object" || kind === "generated" || isGeneratedStepImageQuery(query)) return;
   const key = cacheKey(query, kind, aspect);
   if (l1.has(key) || warming.has(key)) return;
   warming.add(key);

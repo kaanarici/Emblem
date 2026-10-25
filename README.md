@@ -17,7 +17,7 @@ Ask anything, and Emblem answers with a native iPhone page instead of a chat bub
 - **Voice.** Hold the mic, and a glass wave rises while you speak.
 - **Connectors.** Gmail and Google Calendar through Composio. Apple Calendar, Reminders and Apple Music on the phone.
 - **Models.** Any OpenRouter model with tool calling and structured outputs (tested with Claude, Gemini, DeepSeek, Mistral and GPT-6 Luna), Cerebras, OpenAI, Google or Groq. Or Apple Intelligence on the phone.
-- **3D object icons.** Generated with fal or Gemini, then cached.
+- **3D object icons and step illustrations.** Generated once with fal (or Gemini without a fal key), then cached.
 
 <p align="center">
   <img src="docs/media/features.png" alt="Four Emblem screens: a calendar day, an event page, an interactive compound-interest page and coffee shop cards" width="100%">
@@ -44,7 +44,7 @@ Only Convex and one model provider are required. Everything else turns on when y
 | [Exa](https://exa.ai) | Web search and photos |
 | [Clerk](https://clerk.com) | Sign-in (otherwise everyone is a guest) |
 | [Composio](https://composio.dev) | Gmail and Google Calendar |
-| [fal](https://fal.ai) or Gemini | Generated 3D object icons |
+| [fal](https://fal.ai) or Gemini | Generated 3D object icons and step illustrations |
 | [LiteAPI](https://liteapi.travel) | Hotel search |
 | TMDB and OMDb | Movie and TV posters |
 | xAI | Spoken answers |

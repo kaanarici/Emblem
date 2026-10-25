@@ -63,7 +63,7 @@ Apple model generation uses its own typed snapshot adapter and the same client l
 
 ## Object icons
 
-The optional licensed object-icon pack is bundled only when `EMBLEM_OBJECT_ASSET_DIR` points at it. Without it, the server generates a 3D icon per object and caches it by noun (`server/lib/objectIcons.ts`). `OBJECT_ICON_PROVIDER` picks `fal` or `gemini`; when unset, fal is used if `FAL_KEY` is set. fal draws with FLUX.2 flash on white and cuts out with BiRefNet. Gemini draws on magenta, which is keyed out. SF Symbols are the fallback.
+The optional licensed object-icon pack is bundled only when `EMBLEM_OBJECT_ASSET_DIR` points at it. Without it, the server generates a 3D icon per object and caches it by noun, folding case, spacing and a plain trailing "s" (`server/lib/objectIcons.ts`). Recipe and how-to steps get a generated illustration the same way, cached per owner and scene (`server/lib/generatedStepImages.ts`). Both draw through `server/lib/imageGeneration.ts`: fal when `FAL_KEY` is set, Gemini otherwise, and `IMAGE_PROVIDER` (`fal` or `gemini`) forces one. fal draws with FLUX.2 flash; icons are drawn on white and cut out with BiRefNet. Gemini draws icons on magenta, which is keyed out. Each image is drawn once: a cache hit skips generation, concurrent requests share one call, and a key gets at most one paid attempt an hour across servers, so a failure is not retried in a loop. `IMAGE_GENERATIONS_PER_DAY` (default 300) caps paid images across the whole server; past it, icons fall back to SF Symbols and steps show no illustration.
 
 ## Where to change behaviour
 

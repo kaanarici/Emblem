@@ -2,8 +2,7 @@
   "app/api/generate/route.ts": 545,
   "convex/automations.ts": 830,
   "lib/connectors.ts": 942,
-  "lib/generatedStepImages.ts": 519,
-  "lib/imageResolve.ts": 669,
+  "lib/imageResolve.ts": 661,
   "lib/research.ts": 585,
   "lib/schema.ts": 1063,
   "lib/travel/nuitee.ts": 562

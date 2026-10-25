@@ -9,7 +9,8 @@ import {
 } from "@/lib/objectIcons";
 import { cachedImageURL, resolveImageCached } from "@/lib/imageResolve";
 import type { ImageAspect } from "@/lib/blockPrimitives";
-import { admitMetered, METERED_ROUTES } from "@/lib/meteredAccess";
+import { requestAuth } from "@/lib/auth";
+import { admitMetered, imageGenerationAdmission, METERED_ROUTES } from "@/lib/meteredAccess";
 import { parseHotelPhotoQuery } from "@/lib/travel/hotelContent";
 
 export const runtime = "nodejs";
@@ -49,7 +50,8 @@ export async function GET(req: Request) {
     kind === "photo" && parseHotelPhotoQuery(query)
       ? METERED_ROUTES.catalogImage
       : METERED_ROUTES.image;
-  if (!(await admitMetered(req, route))) {
+  const auth = await requestAuth(req);
+  if (!(await admitMetered(req, route, auth))) {
     return Response.json(
       { error: "rate_limited" },
       {
@@ -60,7 +62,7 @@ export async function GET(req: Request) {
   }
 
   if (kind === "object") {
-    const url = await resolveObjectIconQuery(query);
+    const url = await resolveObjectIconQuery(query, { admit: imageGenerationAdmission(auth) });
     return Response.json(
       { url },
       {
@@ -72,7 +74,9 @@ export async function GET(req: Request) {
   }
 
   if (kind === "generated" && isGeneratedStepImageQuery(query)) {
-    const url = await resolveGeneratedStepImageQuery(query);
+    const url = await resolveGeneratedStepImageQuery(query, {
+      admit: imageGenerationAdmission(auth),
+    });
     return Response.json(
       { url },
       {

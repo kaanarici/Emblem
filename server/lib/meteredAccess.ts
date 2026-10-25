@@ -71,6 +71,32 @@ export const METERED_ROUTES = {
   },
 } satisfies Record<string, MeteredRoute>;
 
+const DEFAULT_IMAGE_GENERATIONS_PER_DAY = 300;
+
+function imageGenerationsPerDay(): number {
+  const configured = process.env.IMAGE_GENERATIONS_PER_DAY?.trim();
+  const value = configured ? Number(configured) : DEFAULT_IMAGE_GENERATIONS_PER_DAY;
+  return Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000
+    ? value
+    : DEFAULT_IMAGE_GENERATIONS_PER_DAY;
+}
+
+export function imageGenerationAdmission(auth: Pick<RequestAuth, "convex" | "ownerKey">) {
+  return async (imageKey: string): Promise<boolean> => {
+    const perDay = imageGenerationsPerDay();
+    return (
+      perDay > 0 &&
+      allowRequests(
+        [
+          { key: `image-generation:${imageKey}`, capacity: 1, refillPerHour: 1 },
+          { key: "image-generation:day", capacity: perDay, refillPerHour: perDay / 24 },
+        ],
+        auth,
+      )
+    );
+  };
+}
+
 export async function admitMetered(
   req: Request,
   route: MeteredRoute,

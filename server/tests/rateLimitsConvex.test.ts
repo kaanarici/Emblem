@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "../convex/_generated/api";
 import { fenceOwnerWrites } from "../convex/ownership";
 import schema from "../convex/schema";
+import type { RequestAuth } from "../lib/auth";
+import { imageGenerationAdmission } from "../lib/meteredAccess";
 import { createRateLimitGate } from "../lib/rateLimit";
 import { signRateLimitGrant, type RateBudget } from "../lib/rateLimitGrant";
 
@@ -213,5 +215,24 @@ describe("durable server-authorized admission", () => {
         (row) => row.nonce,
       ),
     ).toEqual(["live"]);
+  });
+
+  it("attempts each image once an hour across servers and stops paid images at the daily ceiling", async () => {
+    const t = setup();
+    const convex = {
+      mutation: (
+        reference: typeof api.rateLimits.reserve,
+        grant: { payload: string; signature: string },
+      ) => t.mutation(reference, grant),
+    } as unknown as RequestAuth["convex"];
+    const admit = imageGenerationAdmission({ convex, ownerKey: null });
+    vi.stubEnv("IMAGE_GENERATIONS_PER_DAY", "3");
+    expect(await admit("a".repeat(64))).toBe(true);
+    expect(await admit("a".repeat(64))).toBe(false);
+    expect(await admit("b".repeat(64))).toBe(true);
+    expect(await admit("c".repeat(64))).toBe(true);
+    expect(await admit("d".repeat(64))).toBe(false);
+    vi.stubEnv("IMAGE_GENERATIONS_PER_DAY", "0");
+    expect(await admit("e".repeat(64))).toBe(false);
   });
 });

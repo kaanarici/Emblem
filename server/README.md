@@ -101,6 +101,7 @@ Every Convex function takes the owner from `ctx.auth` (`convex/ownership.ts`), n
 
 - Every route that spends provider credit goes through `METERED_ROUTES` in `lib/meteredAccess.ts`: a budget per signed-in user or guest address, plus one shared cap across guests on guest routes.
 - Budgets use the [Convex Rate Limiter component](https://www.convex.dev/components/rate-limiter), pinned to 0.3.2 because 0.4.2 needs Convex 1.43. `lib/rateLimitGrant.ts` signs short reservations bound to the owner or guest; the public mutation accepts only those. Bucket keys are HMAC-derived, so addresses and identities are not stored. Guests are keyed by `X-Real-IP`, which the platform in front of Next.js must set and overwrite; requests without it share one bucket.
+- Paid image generation also passes `imageGenerationAdmission`: one attempt per image an hour, and a server-wide bucket of `IMAGE_GENERATIONS_PER_DAY` (default 300) that refills over 24 hours. Cache hits spend nothing. Past the ceiling, icons fall back to SF Symbols and steps show no illustration.
 - Image routes reserve up to eight permits at once, valid for one second; other routes reserve one. Unused permits are discarded, not refunded. Outages refuse requests. Rotating `RATE_LIMIT_SECRET` starts fresh budgets.
 - Clearing memory deletes at most 80 records per batch, up to 100 batches or ten seconds.
 - Resolved image URLs and generation runs are kept for 30 days, then purged by daily crons. A request ID replayed after that runs again.

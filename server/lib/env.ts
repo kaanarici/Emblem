@@ -14,13 +14,16 @@ const SPEC: EnvSpec[] = [
   { name: "OMDB_API_KEY", whenMissing: "posters skip OMDb and use fallback sources" },
   {
     name: "GEMINI_API_KEY",
-    whenMissing: "Google inference and generated illustrations unavailable",
+    whenMissing: "Google inference unavailable, and images need FAL_KEY",
   },
   {
     name: "GENERATED_STEP_IMAGE_TOKEN_SECRET",
     whenMissing: "generated step illustrations disabled",
   },
-  { name: "FAL_KEY", whenMissing: "3D object icons generate with Gemini instead of fal" },
+  {
+    name: "FAL_KEY",
+    whenMissing: "icons and step illustrations generate with Gemini instead of fal",
+  },
   { name: "XAI_API_KEY", whenMissing: "TTS disabled" },
   { name: "GROQ_API_KEY", whenMissing: "groq provider unavailable" },
   { name: "OPENAI_API_KEY", whenMissing: "OpenAI provider unavailable" },
