@@ -99,10 +99,12 @@ struct SettingsRowLabel: View {
     }
 }
 
-struct SettingsMenuRow<Options: View, Value: View>: View {
+struct SettingsPickerRow<Value: Hashable & Identifiable>: View {
     let title: String
-    @ViewBuilder let options: Options
-    @ViewBuilder let value: Value
+    let options: [Value]
+    @Binding var selection: Value
+    let name: (Value) -> String
+    var swatch: (Value) -> UIImage? = { _ in nil }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -111,18 +113,29 @@ struct SettingsMenuRow<Options: View, Value: View>: View {
                 .foregroundStyle(Theme.ink)
             Spacer(minLength: 12)
             Menu {
-                options
+                ForEach(options) { option in
+                    Toggle(isOn: Binding(get: { option == selection }, set: { if $0 { selection = option } })) {
+                        Label {
+                            Text(name(option))
+                        } icon: {
+                            if let image = swatch(option) { Image(uiImage: image) }
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
-                    value
+                    if let image = swatch(selection) {
+                        Image(uiImage: image).resizable().frame(width: 14, height: 14)
+                    }
+                    Text(name(selection))
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.inkSecondary)
                 .frame(minHeight: 44)
-                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier(title)
         }
         .padding(.horizontal, SettingsMetrics.rowInset)

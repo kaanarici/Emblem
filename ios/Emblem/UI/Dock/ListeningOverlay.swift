@@ -9,6 +9,7 @@ struct ListeningOverlay: View {
     @Environment(SpeechService.self) private var speech
     @Environment(ConversationStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.listeningStyle) private var style
 
     private static let minimumTranscriptHeight: CGFloat = 132
 
@@ -47,7 +48,7 @@ struct ListeningOverlay: View {
                         }
                     }
                     .frame(width: frame.size.width, height: frame.size.height)
-                    .mask { frame.transcriptMask }
+                    .mask { frame.transcriptMask(style) }
                 }
                 .animation(.smooth(duration: 0.25), value: speech.overlayText.isEmpty)
                 .animation(.smooth(duration: 0.25), value: active)
@@ -170,7 +171,7 @@ struct ListeningOverlay: View {
     private func transcript(frame: LiquidLensFrame) -> some View {
         let bottomClearance = speech.backdropDockStrip + 54
         let transcriptMaximumHeight = max(1, frame.size.height - bottomClearance - frame.apex - 16)
-        let textTop = bottomClearance
+        let textTop = style == .dome ? 0 : bottomClearance
             + min(max(transcriptHeight + 14, Self.minimumTranscriptHeight), transcriptMaximumHeight)
         let washHeight = max(transcriptMaximumHeight + 260, textTop + 72)
         let solid = max(0.45 * (transcriptMaximumHeight + 260), textTop)
@@ -373,6 +374,7 @@ struct GenerationOverlay: View {
     var revealStart: Date?
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accent) private var accent
+    @Environment(\.listeningStyle) private var style
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var dimmed = false
@@ -483,7 +485,8 @@ struct GenerationOverlay: View {
             .float(Float(front)),
             .float(Float(band)),
             .float(Float(cycleOffset)),
-            accent.washArgument)
+            accent.washArgument,
+            .float(style.shaderIndex))
     }
 }
 
@@ -556,6 +559,7 @@ struct ListeningTint: View {
     let isHolding: () -> Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accent) private var accent
+    @Environment(\.listeningStyle) private var style
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var level = 0.0
 
@@ -567,7 +571,8 @@ struct ListeningTint: View {
                         .float2(proxy.size),
                         .float(Float(timeline.date.timeIntervalSince(ListeningTintClock.start))),
                         .float(Float(ListeningTintClock.offset)),
-                        accent.washArgument))
+                        accent.washArgument,
+                        .float(style.shaderIndex)))
             }
         }
         .ignoresSafeArea()
@@ -578,11 +583,12 @@ struct ListeningTint: View {
             let f = Shader.Argument.float(0)
             let size = Shader.Argument.float2(CGSize(width: 1, height: 1))
             let tint = Shader.Argument.float3(1, 1, 1)
-            try? await ShaderLibrary.listeningTint(size, f, f, tint).compile(as: .colorEffect)
+            try? await ShaderLibrary.listeningTint(size, f, f, tint, f).compile(as: .colorEffect)
             let circle = Shader.Argument.float3(0, 0, 1)
-            try? await ShaderLibrary.liquidLens(size, circle, f, f, f, f, f, f, f, f, tint).compile(as: .layerEffect)
-            try? await ShaderLibrary.liquidLensMeniscus(size, circle, f, f, f, f, f, f, f, f, tint).compile(as: .layerEffect)
-            try? await ShaderLibrary.liquidLensTranscriptMask(size, circle, f, f, f).compile(as: .colorEffect)
+            for shader in [ShaderLibrary.waveLens, ShaderLibrary.waveMeniscus, ShaderLibrary.domeLens, ShaderLibrary.domeRim] {
+                try? await shader(size, circle, f, f, f, f, f, f, f, f, tint).compile(as: .layerEffect)
+            }
+            try? await ShaderLibrary.waveTranscriptMask(size, circle, f, f, f).compile(as: .colorEffect)
         }
         .onChange(of: listening) { _, isListening in
             if isListening {

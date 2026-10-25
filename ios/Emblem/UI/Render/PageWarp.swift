@@ -28,11 +28,12 @@ struct LiquidLensFrame {
     var apex: CGFloat { center.y - radius }
     var circle: Shader.Argument { .float3(Float(center.x), Float(center.y), Float(radius)) }
 
-    var transcriptMask: some View {
-        Rectangle()
-            .fill(.white)
-            .colorEffect(ShaderLibrary.liquidLensTranscriptMask(
-                .float2(size), circle, .float(Float(time)), .float(Float(breathe)), .float(Float(progress))))
+    @MainActor @ViewBuilder
+    func transcriptMask(_ style: ListeningStyle) -> some View {
+        switch style {
+        case .wave: WaveListening.transcriptMask(self)
+        case .dome: DomeListening.transcriptMask(self)
+        }
     }
 
     func layerTop(reach: CGFloat) -> CGFloat {
@@ -124,6 +125,7 @@ struct LiquidLensBackdrop<Foreground: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accent) private var accent
+    @Environment(\.listeningStyle) private var style
 
     init(sourceImage: UIImage?, frosted: UIImage?, active: Bool,
          audioLevel: @escaping () -> Float = { 0 },
@@ -183,32 +185,41 @@ struct LiquidLensBackdrop<Foreground: View>: View {
     }
 
     private func layers(_ frame: LiquidLensFrame) -> some View {
-        ZStack(alignment: .bottom) {
-            if let sourceImage, frame.progress > 0.001 {
-                meniscus(sourceImage: sourceImage, frame: frame)
-                    .allowsHitTesting(false)
-            }
-            if let frosted, frame.progress > 0.001 {
-                lens(sourceImage: frosted, frame: frame)
-                    .allowsHitTesting(false)
+        let glass = ListeningGlass(frame: frame, washLuma: scheme == .dark ? 0.13 : 1, accent: accent)
+        return ZStack(alignment: .bottom) {
+            if frame.progress > 0.001 {
+                switch style {
+                case .wave: WaveListening(glass: glass, source: sourceImage, frosted: frosted)
+                case .dome: DomeListening(glass: glass, source: sourceImage, frosted: frosted)
+                }
             }
             foreground(frame)
                 .frame(width: frame.size.width, height: frame.size.height)
         }
     }
+}
 
-    private func meniscus(sourceImage: UIImage, frame: LiquidLensFrame) -> some View {
-        glass(sourceImage, frame: frame, reach: 104, maxOffset: CGSize(width: 76, height: 56),
-              shader: ShaderLibrary.liquidLensMeniscus)
-    }
+enum ListeningStyle: String, CaseIterable, Identifiable {
+    case wave, dome
 
-    private func lens(sourceImage: UIImage, frame: LiquidLensFrame) -> some View {
-        glass(sourceImage, frame: frame, reach: 48, maxOffset: CGSize(width: 8, height: 8),
-              shader: ShaderLibrary.liquidLens)
-    }
+    static let storageKey = "theme.listening"
 
-    private func glass(_ image: UIImage, frame: LiquidLensFrame, reach: CGFloat, maxOffset: CGSize,
-                       shader: ShaderFunction) -> some View {
+    var id: Self { self }
+    var title: String { rawValue.capitalized }
+    var shaderIndex: Float { self == .wave ? 0 : 1 }
+}
+
+extension EnvironmentValues {
+    @Entry var listeningStyle: ListeningStyle = .wave
+}
+
+@MainActor
+struct ListeningGlass {
+    let frame: LiquidLensFrame
+    let washLuma: Double
+    let accent: Accent
+
+    func layer(_ image: UIImage, reach: CGFloat, maxOffset: CGSize, shader: ShaderFunction) -> some View {
         let top = frame.layerTop(reach: reach)
         return Image(uiImage: image)
             .resizable()
@@ -221,7 +232,7 @@ struct LiquidLensBackdrop<Foreground: View>: View {
                     .float2(frame.size),
                     frame.circle,
                     .float(Float(frame.progress)),
-                    .float(scheme == .dark ? 0.13 : 1.0),
+                    .float(Float(washLuma)),
                     .float(ListeningTintClock.elapsed),
                     .float(Float(ListeningTintClock.offset)),
                     .float(ListeningTintClock.level),
@@ -231,6 +242,7 @@ struct LiquidLensBackdrop<Foreground: View>: View {
                     accent.washArgument),
                 maxSampleOffset: maxOffset)
             .frame(width: frame.size.width, height: frame.size.height, alignment: .bottom)
+            .allowsHitTesting(false)
     }
 }
 

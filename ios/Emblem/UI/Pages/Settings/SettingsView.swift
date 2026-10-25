@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("memory.enabled") private var memoryEnabled = true
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
     @AppStorage(Accent.storageKey) private var accent = Accent.aluminum
+    @AppStorage(ListeningStyle.storageKey) private var listening = ListeningStyle.wave
     @State private var showConnectors = false
     @State private var showMemory = false
     @State private var showInference = false
@@ -31,30 +32,14 @@ struct SettingsView: View {
                 SettingsSectionLabel(title: "Theme")
                     .padding(.top, 46)
                 SettingsCard {
-                    SettingsMenuRow(title: "Appearance") {
-                        Picker("Appearance", selection: $appearance) {
-                            ForEach(Appearance.allCases) { Text($0.title).tag($0) }
-                        }
-                    } value: {
-                        Text(appearance.title)
-                    }
+                    SettingsPickerRow(title: "Appearance", options: Appearance.allCases, selection: $appearance,
+                                      name: \.title)
                     SettingsHairline()
-                    SettingsMenuRow(title: "Accent color") {
-                        Picker("Accent color", selection: $accent) {
-                            ForEach(Accent.allCases) { accent in
-                                Label {
-                                    Text(accent.title)
-                                } icon: {
-                                    Image(uiImage: accent.swatch)
-                                }
-                                .tag(accent)
-                            }
-                        }
-                    } value: {
-                        AnodizedSurface(shape: Circle())
-                            .frame(width: 14, height: 14)
-                        Text(accent.title)
-                    }
+                    SettingsPickerRow(title: "Accent color", options: Accent.allCases, selection: $accent,
+                                      name: \.title, swatch: \.swatch)
+                    SettingsHairline()
+                    SettingsPickerRow(title: "Listening", options: ListeningStyle.allCases, selection: $listening,
+                                      name: \.title)
                 }
 
                 SettingsSectionLabel(title: "Personalization")

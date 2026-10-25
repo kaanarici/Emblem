@@ -9,6 +9,7 @@ struct EmblemApp: App {
     @State private var auth: AuthStore
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
     @AppStorage(Accent.storageKey) private var accent = Accent.aluminum
+    @AppStorage(ListeningStyle.storageKey) private var listeningStyle = ListeningStyle.wave
 
     init() {
         ObjectLibrary.warm()
@@ -42,6 +43,7 @@ struct EmblemApp: App {
             .environment(speech)
             .environment(auth)
             .environment(\.accent, accent)
+            .environment(\.listeningStyle, listeningStyle)
             .onChange(of: appearance, initial: true) { _, appearance in
                 for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
                     scene.windows.forEach { $0.overrideUserInterfaceStyle = appearance.interfaceStyle }
