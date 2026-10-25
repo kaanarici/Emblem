@@ -22,7 +22,7 @@ struct WeatherView: View {
     }
 
     private var hours: [WeatherBlock.HourForecast] {
-        if let day = selectedDay { return day.hours }
+        if let day = selectedDay { return day.hours.filter { $0.hour >= 6 } }
         let now = block.current.observedAt.flatMap { Int($0.dropFirst(11).prefix(2)) } ?? 0
         let today = forecast.first?.hours ?? []
         let start = today.lastIndex { $0.hour <= now } ?? 0
