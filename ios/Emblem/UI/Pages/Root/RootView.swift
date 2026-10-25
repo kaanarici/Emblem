@@ -125,6 +125,7 @@ struct RootView: View {
     }
     @State var heldChromePage: GeneratedPage?
     @State var reveal: Reveal?
+    @State var handledResponseWaveID: UUID?
     @State var generationBackdrop: UIImage?
     @State var generationWaveEpoch: Date?
     @State var lastTouch = TouchOriginRecorder.LastTouch()
@@ -407,6 +408,7 @@ struct RootView: View {
                 }
             }
             .onChange(of: store.responseWaveID) { _, id in
+            handledResponseWaveID = id
             guard id != nil, store.pages.count >= 2, !store.isExpansionGeneration,
                   !store.isCalendarGeneration else { return }
             guard let sourceImage = generationBackdrop else {

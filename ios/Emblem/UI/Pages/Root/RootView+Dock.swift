@@ -58,7 +58,8 @@ extension RootView {
             ComposerBackdrop(fadesToPaper: !isHomePage)
                 .frame(height: (keyboardLiftsDock ? 8 : windowBottomInset) + 56 + 24)
                 .opacity(chromeSuppressed || mapIsTopmost || calendarIsTopmost || areaPageIsTopmost || eventDetailLoading
-                    || isHoldingForGeneration || reveal != nil || store.activeQuestion != nil
+                    || isHoldingForGeneration || reveal != nil || store.responseWaveID != handledResponseWaveID
+                    || store.activeQuestion != nil
                     ? 0 : tablePresentation.opacity * (1 - sidebarProgress))
                 .animation(.easeOut(duration: 0.2), value: store.activeQuestion != nil)
                 .animation(.easeOut(duration: 0.35), value: reveal == nil)
