@@ -11,10 +11,7 @@ const compositionScaffold = [
 ] as const satisfies readonly BlockType[];
 
 const COMPOSITION_ENVELOPE_TYPES: readonly BlockType[] = [
-  ...new Set<BlockType>([
-    ...compositionScaffold,
-    ...centerpieceBlockTypes.filter((type) => type !== "weather"),
-  ]),
+  ...new Set<BlockType>([...compositionScaffold, ...centerpieceBlockTypes]),
 ];
 
 async function envelopeJSONSchema(

@@ -38,7 +38,6 @@ export const centerpieceBlockTypes = [
   "questionList",
   "map",
   "route",
-  "weather",
   "photoGrid",
   "music",
   "reminders",
@@ -948,11 +947,7 @@ export const blockSchema = z.discriminatedUnion("type", [
     "weather",
     {
       location: z.string(),
-      focus: z
-        .enum(["overview", "hourly", "daily", "precipitation", "outdoors"])
-        .optional()
-        .describe("presentation priority inferred from the request"),
-      focusDay: z.string().optional().describe("forecast date to select initially (yyyy-mm-dd)"),
+      focusDay: z.string().optional().describe("forecast date selected initially (yyyy-mm-dd)"),
       current: z.object({
         observedAt: z.string(),
         tempC: z.number(),
@@ -966,18 +961,6 @@ export const blockSchema = z.discriminatedUnion("type", [
         precipPct: z.number(),
         isDay: z.boolean(),
       }),
-      hourly: z.array(
-        z.object({
-          time: z.string(),
-          tempC: z.number(),
-          feels: z.number(),
-          condition: weatherCondition,
-          precipPct: z.number(),
-          windKph: z.number(),
-          humid: z.number(),
-          isDay: z.boolean(),
-        }),
-      ),
       forecast: z.array(
         z.object({
           date: z.string(),
@@ -990,10 +973,21 @@ export const blockSchema = z.discriminatedUnion("type", [
           uvIndex: z.number(),
           sunrise: z.string(),
           sunset: z.string(),
+          hours: z
+            .array(
+              z.tuple([
+                z.number().int().min(0).max(23),
+                z.number(),
+                weatherCondition,
+                z.number(),
+                z.boolean(),
+              ]),
+            )
+            .describe("local hours of this date as [hour, tempC, condition, precipPct, isDay]"),
         }),
       ),
     },
-    "Interactive weather card with current conditions, next 24 hours, and 7 days. Copy every field from getWeather exactly; never invent numbers.",
+    "Native weather for one place: now with the next 24 hours, and the week, where tapping a day shows its hours. Filled by the server from getWeather; the model never writes it.",
   ),
   block(
     "photoGrid",

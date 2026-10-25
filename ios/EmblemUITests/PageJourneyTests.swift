@@ -46,4 +46,27 @@ final class PageJourneyTests: JourneyTestCase {
         XCTAssertTrue(close.waitForNonExistence(timeout: 3))
         XCTAssertEqual(expand.frame.minY, resting.minY, accuracy: 2, "Closing the comparison moved the page")
     }
+
+    func testWeatherDaySwitchesInPlace() throws {
+        let server = try StubServer(replies: ["weather"])
+        launch(server)
+        send("Weather in San Francisco")
+
+        XCTAssertTrue(element("weather-hourly-weather-1").waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Now"].exists)
+        let page = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        page.press(forDuration: 0.05, thenDragTo: page.withOffset(CGVector(dx: 0, dy: -560)))
+        let monday = app.buttons["weather-day-2026-10-26"]
+        tap(monday)
+        XCTAssertTrue(text(containing: "Monday · Rain").waitForExistence(timeout: 3))
+        XCTAssertTrue(monday.isSelected)
+        XCTAssertFalse(app.staticTexts["Now"].exists)
+        XCTAssertFalse(element("expansion-page").exists)
+        XCTAssertFalse(app.buttons["Close"].exists, "Tapping a day pushed a new page")
+        XCTAssertEqual(server.prompts.count, 1, "Tapping a day asked the server again")
+
+        tap(app.buttons["weather-day-2026-10-25"])
+        XCTAssertTrue(app.staticTexts["Now"].waitForExistence(timeout: 3))
+        XCTAssertFalse(monday.isSelected)
+    }
 }

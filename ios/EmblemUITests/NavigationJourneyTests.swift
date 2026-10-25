@@ -57,12 +57,15 @@ final class NavigationJourneyTests: JourneyTestCase {
         tap(app.buttons["Pin"])
         XCTAssertTrue(app.buttons["Pin"].waitForNonExistence(timeout: 3), "The first tap on Pin did nothing")
         XCTAssertLessThan(chat.frame.minY, app.buttons["sidebar-conversation-chat-1"].frame.minY, "Pinning did not move the chat up")
+        let home = app.buttons.matching(NSPredicate(format: "label == 'Home'")).firstMatch
+        let homeTop = home.frame.minY
         let oldest = app.buttons["sidebar-conversation-chat-30"]
         for _ in 0..<15 where !oldest.exists {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.8))
             start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3)))
         }
         XCTAssertTrue(oldest.exists, "The oldest conversation never loaded")
+        XCTAssertEqual(home.frame.minY, homeTop, accuracy: 1, "Home scrolled away with the chats")
     }
 
     func testLongConversationGoesBackToItsFirstPage() throws {
@@ -91,7 +94,8 @@ final class NavigationJourneyTests: JourneyTestCase {
         openSidebar()
         let settings = app.buttons["sidebar-settings"]
         XCTAssertGreaterThan(settings.frame.minY, app.frame.height * 0.8, "Settings is out of thumb reach")
-        tap(settings)
+        XCTAssertLessThan(settings.frame.maxX, app.frame.width / 2, "Settings is not the bottom-left button")
+        settings.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 6))
 
         let row = app.buttons["Apple Intelligence"].firstMatch

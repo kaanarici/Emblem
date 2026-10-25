@@ -43,7 +43,7 @@ import { reasoningOptions, type ReasoningEffort } from "./reasoning";
 import type { InferenceTarget } from "./provider";
 import {
   getWeather,
-  weatherDateInRequest,
+  weatherBrief,
   isWeatherDate,
   type WeatherPayload,
   type WeatherTiming,
@@ -276,7 +276,7 @@ export async function research({
   if (requiresWeather)
     tools.getWeather = tool({
       description:
-        "Real current conditions, next 24 hours, and 7-day forecast for a place (Celsius, km/h). Use when the current request or its conversation context asks for weather, including a refresh of the prior forecast.",
+        "Real current conditions and the 7-day forecast with hourly detail for a place (Celsius, km/h); the server shows it as one native weather component. Use when the current request or its conversation context asks for weather, including a refresh of the prior forecast.",
       inputSchema: z.object({
         place: z.string().describe("city or place name"),
         date: z
@@ -297,14 +297,14 @@ export async function research({
           message: "Checking the forecast",
         });
         const result = await getWeather(place, toolOptions?.abortSignal, options.onTiming, {
-          date: date ?? weatherDateInRequest(latestRequest),
+          date,
         });
         const failed = "error" in result;
         if (!failed) {
           onWeather?.(result);
           if (weatherNotes.length < 3) {
             weatherNotes.push(
-              `[Verified Open-Meteo payload: weather block fields must match exactly]\n${JSON.stringify(result)}`,
+              `[Verified Open-Meteo forecast, shown natively below your introduction]\n${weatherBrief(result)}`,
             );
           }
         }
@@ -317,7 +317,7 @@ export async function research({
           status: failed ? "failed" : "succeeded",
           message: failed ? "Couldn't get the forecast" : "Checked the forecast",
         });
-        return result;
+        return failed ? result : { forecast: weatherBrief(result) };
       },
     });
   if (allows("web") && webPolicy !== "suppress" && process.env.EXA_API_KEY) {

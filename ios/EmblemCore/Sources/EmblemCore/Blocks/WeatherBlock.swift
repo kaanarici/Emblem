@@ -17,15 +17,6 @@ public enum WeatherCondition: String, Codable, Hashable {
     }
 }
 
-public enum WeatherFocus: String, Codable, Hashable {
-    case overview, hourly, daily, precipitation, outdoors
-
-    public init(from decoder: Decoder) throws {
-        let raw = (try? decoder.singleValueContainer().decode(String.self)) ?? ""
-        self = WeatherFocus(rawValue: raw) ?? .overview
-    }
-}
-
 public struct WeatherBlock: Codable, Hashable {
     public struct Current: Codable, Hashable {
         public var observedAt: String?
@@ -79,47 +70,29 @@ public struct WeatherBlock: Codable, Hashable {
             try c.encodeIfPresent(isDay, forKey: .isDay)
         }
     }
-    public struct HourForecast: Codable, Hashable, Identifiable {
-        public var time: String
+    public struct HourForecast: Codable, Hashable {
+        public var hour: Int
         public var tempC: Double
-        public var feelsLikeC: Double?
         public var condition: WeatherCondition
-        public var precipitationProbability: Double?
-        public var windKph: Double?
-        public var humidityPct: Double?
-        public var isDay: Bool?
-        public var id: String { time }
-
-        private enum CodingKeys: String, CodingKey {
-            case time, tempC, feels, feelsLikeC, condition, precipPct
-            case precipitationProbability, windKph, humid, humidityPct, isDay
-        }
+        public var precipitationProbability: Double
+        public var isDay: Bool
 
         public init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            time = try c.decode(String.self, forKey: .time)
-            tempC = try c.decode(Double.self, forKey: .tempC)
-            feelsLikeC = (try? c.decode(Double.self, forKey: .feels))
-                ?? (try? c.decode(Double.self, forKey: .feelsLikeC))
-            condition = try c.decode(WeatherCondition.self, forKey: .condition)
-            precipitationProbability = (try? c.decode(Double.self, forKey: .precipPct))
-                ?? (try? c.decode(Double.self, forKey: .precipitationProbability))
-            windKph = try? c.decode(Double.self, forKey: .windKph)
-            humidityPct = (try? c.decode(Double.self, forKey: .humid))
-                ?? (try? c.decode(Double.self, forKey: .humidityPct))
-            isDay = try? c.decode(Bool.self, forKey: .isDay)
+            var c = try decoder.unkeyedContainer()
+            hour = try c.decode(Int.self)
+            tempC = try c.decode(Double.self)
+            condition = try c.decode(WeatherCondition.self)
+            precipitationProbability = try c.decode(Double.self)
+            isDay = try c.decode(Bool.self)
         }
 
         public func encode(to encoder: Encoder) throws {
-            var c = encoder.container(keyedBy: CodingKeys.self)
-            try c.encode(time, forKey: .time)
-            try c.encode(tempC, forKey: .tempC)
-            try c.encodeIfPresent(feelsLikeC, forKey: .feels)
-            try c.encode(condition, forKey: .condition)
-            try c.encodeIfPresent(precipitationProbability, forKey: .precipPct)
-            try c.encodeIfPresent(windKph, forKey: .windKph)
-            try c.encodeIfPresent(humidityPct, forKey: .humid)
-            try c.encodeIfPresent(isDay, forKey: .isDay)
+            var c = encoder.unkeyedContainer()
+            try c.encode(hour)
+            try c.encode(tempC)
+            try c.encode(condition)
+            try c.encode(precipitationProbability)
+            try c.encode(isDay)
         }
     }
     public struct DayForecast: Codable, Hashable, Identifiable {
@@ -133,11 +106,12 @@ public struct WeatherBlock: Codable, Hashable {
         public var uvIndex: Double?
         public var sunrise: String?
         public var sunset: String?
+        public var hours: [HourForecast]
         public var id: String { date ?? day }
 
         private enum CodingKeys: String, CodingKey {
             case date, day, condition, high, low, precipPct
-            case precipitationProbability, windKph, uvIndex, sunrise, sunset
+            case precipitationProbability, windKph, uvIndex, sunrise, sunset, hours
         }
 
         public init(from decoder: Decoder) throws {
@@ -153,6 +127,7 @@ public struct WeatherBlock: Codable, Hashable {
             uvIndex = try? c.decode(Double.self, forKey: .uvIndex)
             sunrise = try? c.decode(String.self, forKey: .sunrise)
             sunset = try? c.decode(String.self, forKey: .sunset)
+            hours = (try? c.decode([HourForecast].self, forKey: .hours)) ?? []
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -167,14 +142,12 @@ public struct WeatherBlock: Codable, Hashable {
             try c.encodeIfPresent(uvIndex, forKey: .uvIndex)
             try c.encodeIfPresent(sunrise, forKey: .sunrise)
             try c.encodeIfPresent(sunset, forKey: .sunset)
+            try c.encode(hours, forKey: .hours)
         }
     }
     public var id: String
     public var location: String
-    public var focus: WeatherFocus?
     public var focusDay: String?
-    public var summary: String? = nil
     public var current: Current
-    public var hourly: [HourForecast]?
     public var forecast: [DayForecast]
 }

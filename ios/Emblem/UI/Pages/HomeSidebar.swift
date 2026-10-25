@@ -4,6 +4,7 @@ import EmblemCore
 struct HomeSidebar: View {
     @Environment(ConversationStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accent) private var accent
     @State private var history = ConversationHistory.shared
     @State private var deleteTarget: HistoryTarget?
     @State private var deleteFailed = false
@@ -23,66 +24,32 @@ struct HomeSidebar: View {
     var onCalendar: (() -> Void)? = nil
 
     var body: some View {
-        ZStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    sidebarRow("Home", symbol: "house", selected: isHomeSelected, action: onHome)
-                    sidebarRow("Saves", symbol: "bookmark", selected: isSavesSelected, action: onSaves)
-                    if let onCalendar {
-                        sidebarRow("Calendar", symbol: "calendar", selected: isCalendarSelected, action: onCalendar)
-                    }
-                    Divider().padding(.vertical, 18)
-                    if !recentConversations.isEmpty {
-                        Text("Chats")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.inkSecondary)
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 8)
-                        ForEach(recentConversations) { item in
-                            conversationRow(item)
-                                .transition(reduceMotion ? .identity : .opacity)
-                                .onAppear {
-                                    guard item.key == recentConversations.last?.key else { return }
-                                    Task { await history.loadMore() }
-                                }
-                        }
-                        .id(history.epoch)
-                        .animation(reduceMotion ? nil : .spring(duration: 0.32), value: recentConversations.map(\.key))
-                    } else if history.loadState == .loading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 24)
-                    }
-                    if history.loadState == .failed {
-                        failedRow
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                sidebarRow("Home", symbol: "house", selected: isHomeSelected, action: onHome)
+                sidebarRow("Saves", symbol: "bookmark", selected: isSavesSelected, action: onSaves)
+                if let onCalendar {
+                    sidebarRow("Calendar", symbol: "calendar", selected: isCalendarSelected, action: onCalendar)
                 }
-                .padding(.horizontal, 8)
-                .padding(.top, topInset + 12)
-                .padding(.bottom, 150)
-                .transaction(value: history.epoch) { transaction in
-                    transaction.animation = nil
-                    transaction.disablesAnimations = true
+                Divider().padding(.top, 14)
+                if !recentConversations.isEmpty || history.loadState != .loaded {
+                    Text("Chats")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 18)
+                    .accessibilityAddTraits(.isHeader)
                 }
             }
-            .scrollIndicators(.hidden)
-            .overlay(alignment: .bottom) {
-                VariableBlurView(maxBlurRadius: 8, direction: .blurredBottomClearTop)
-                    .frame(height: bottomInset + 80)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-
-            VStack(spacing: 0) {
-                VariableBlurView(maxBlurRadius: 8, direction: .blurredTopClearBottom)
-                    .frame(height: topInset + 12)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                Spacer()
-                SidebarAccount(selected: isSettingsSelected, isVisible: isVisible, onSettings: onSettings)
-                    .frame(height: DockView.controlSize)
-                    .padding(.bottom, bottomInset)
-            }
+            .padding(.horizontal, 8)
+            .padding(.top, topInset)
+            chats
+        }
+        .overlay(alignment: .bottomLeading) {
+            SidebarSettingsButton(selected: isSettingsSelected, isVisible: isVisible, onSettings: onSettings)
+                .frame(height: DockView.controlSize)
+                .padding(.leading, 18)
+                .padding(.bottom, bottomInset)
         }
         .foregroundStyle(Theme.ink)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -131,6 +98,52 @@ struct HomeSidebar: View {
         if !started { deleteFailed = true }
     }
 
+    private var chats: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(recentConversations) { item in
+                    conversationRow(item)
+                        .transition(reduceMotion ? .identity : .opacity)
+                        .onAppear {
+                            guard item.key == recentConversations.last?.key else { return }
+                            Task { await history.loadMore() }
+                        }
+                }
+                .id(history.epoch)
+                .animation(reduceMotion ? nil : .spring(duration: 0.32), value: recentConversations.map(\.key))
+                if recentConversations.isEmpty, history.loadState == .loading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                }
+                if history.loadState == .failed {
+                    failedRow
+                }
+            }
+            .padding(.horizontal, 8)
+            .transaction(value: history.epoch) { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
+        .contentMargins(.top, Self.edgeFade, for: .scrollContent)
+        .contentMargins(.bottom, bottomInset + DockView.controlSize + Self.edgeFade * 2, for: .scrollContent)
+        .scrollIndicators(.hidden)
+        .mask {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: Self.edgeFade)
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: Self.edgeFade * 2)
+                Color.clear
+                    .frame(height: bottomInset + DockView.controlSize)
+            }
+        }
+    }
+
+    private static let edgeFade: CGFloat = 14
+
     private var recentConversations: [ConversationSummary] {
         history.items
     }
@@ -148,7 +161,7 @@ struct HomeSidebar: View {
                     } else {
                         Image(systemName: "bubble.left")
                             .font(.system(size: 19, weight: .light))
-                            .foregroundStyle(Theme.inkSecondary)
+                            .foregroundStyle(selected ? accent.tint(Theme.ink) : Theme.inkSecondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Theme.card)
                     }
@@ -254,6 +267,7 @@ struct HomeSidebar: View {
                     }
                 }
                 .frame(width: 24, height: 24)
+                .foregroundStyle(selected ? accent.tint(Theme.ink) : Theme.ink)
                 Text(title)
                     .font(.system(size: 16))
                 Spacer()
@@ -277,79 +291,35 @@ private struct SidebarHomeGlyph: View {
     }
 }
 
-private struct SidebarAccount: View {
-    @Environment(AuthStore.self) private var auth
+private struct SidebarSettingsButton: View {
+    @Environment(\.accent) private var accent
 
     let selected: Bool
     let isVisible: Bool
     let onSettings: () -> Void
 
     var body: some View {
-        Button(action: onSettings) { account }
-            .buttonStyle(.pressable)
+        Button(action: onSettings) { gear }
+            .buttonStyle(.plain)
             .accessibilityRepresentation {
                 if isVisible {
-                    Button(action: onSettings) { account }
-                        .accessibilityIdentifier("sidebar-settings")
+                    Button(action: onSettings) { gear }
+                        .accessibilityLabel("Settings")
                         .accessibilityHint("Opens Settings and connections")
                         .accessibilityAddTraits(selected ? .isSelected : [])
+                        .accessibilityIdentifier("sidebar-settings")
                 }
             }
-            .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
-                width / 2 - DockView.newPageWidth / 2 - 16
-            }
-            .padding(.leading, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
+            .frame(width: 44, height: 44)
     }
 
-    private var name: String? {
-        auth.greetingName ?? auth.displayName ?? auth.email
-    }
-
-    private var account: some View {
-        HStack(spacing: 10) {
-            profileCircle
-            Text(name ?? "Guest")
-                .font(.system(size: 16))
-                .foregroundStyle(Theme.ink)
-                .lineLimit(1)
-                .accessibilityIdentifier("sidebar-account")
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .frame(height: DockView.innerControlSize)
-        .background(selected ? Theme.ink.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 14))
-        .contentShape(Rectangle())
-    }
-
-    private var profileCircle: some View {
-        Group {
-            if let url = auth.avatarURL {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        initial
-                    }
-                }
-            } else {
-                initial
-            }
-        }
-        .frame(width: 28, height: 28)
-        .background(Theme.ink.opacity(0.08), in: Circle())
-        .clipShape(Circle())
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var initial: some View {
-        if let letter = name?.first {
-            Text(String(letter).uppercased())
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-        } else {
-            EmblemLogo(size: 20)
-        }
+    private var gear: some View {
+        Image(systemName: selected ? "gearshape.fill" : "gearshape")
+            .font(.system(size: 20, weight: .regular))
+            .foregroundStyle(selected ? accent.tint(Color.primary) : Color.primary)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
     }
 }

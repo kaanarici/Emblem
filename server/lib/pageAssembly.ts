@@ -148,16 +148,12 @@ export function createPageAssembly({
     finish: PageFinish | null,
     dateGrounding: ReturnType<typeof temporalGrounding>,
   ) {
-    const finalized = finalizePagePlan(
-      withVerifiedWeather(page, weatherPayloads, persist.prompt),
-      finish,
-      {
-        articleLead,
-        requiredInputOnly,
-        articleTitle: persist.articleTitle,
-        explanationIntent: requestsExplanation(persist.prompt),
-      },
-    );
+    const finalized = finalizePagePlan(withVerifiedWeather(page, weatherPayloads), finish, {
+      articleLead,
+      requiredInputOnly,
+      articleTitle: persist.articleTitle,
+      explanationIntent: requestsExplanation(persist.prompt),
+    });
 
     const hotel = hotelSelection ? hotelCatalogs.get(hotelSelection.hotelId) : undefined;
     const browse =
@@ -203,9 +199,6 @@ export function createPageAssembly({
       verifiedActionURLs,
     );
     const issues = [...pageCompositionIssues(finalPage), ...dateGrounding.issues(finalPage)];
-    if (page.some((block) => block.type === "weather") && weatherPayloads.length === 0) {
-      issues.push("weather block requires a successful weather tool result");
-    }
     if (
       !finalized.needsInput &&
       weatherPayloads.length > 0 &&
@@ -306,26 +299,10 @@ export function createPageAssembly({
 
   function canonicalComposerBlock(block: z.infer<typeof blockSchema>): z.infer<typeof blockSchema> {
     block = expandHotelImageRefs(block, hotelSummaries, hotelCatalogs);
-    const weather =
-      block.type === "weather"
-        ? (weatherPayloads.find((payload) => {
-            const payloadLocation = normalizeEvidence(payload.location);
-            const blockLocation = normalizeEvidence(block.location);
-            return (
-              payloadLocation === blockLocation ||
-              payloadLocation.includes(blockLocation) ||
-              blockLocation.includes(payloadLocation)
-            );
-          }) ?? (weatherPayloads.length === 1 ? weatherPayloads[0] : undefined))
-        : undefined;
-    if (block.type === "weather" && weatherPayloads.length > 0 && !weather) {
-      throw new Error("weather block does not match a successful weather tool result");
-    }
-    const groundedBlock = block.type === "weather" && weather ? { ...block, ...weather } : block;
     const actionCanonicalBlock =
-      groundedBlock.type === "pageMeta"
-        ? { ...groundedBlock, dockAction: undefined }
-        : verifyRowLinks(groundedBlock, verifiedActionURLs);
+      block.type === "pageMeta"
+        ? { ...block, dockAction: undefined }
+        : verifyRowLinks(block, verifiedActionURLs);
     return canonicalizePlannedBlock(scrubBlockCopy(actionCanonicalBlock), null);
   }
 }

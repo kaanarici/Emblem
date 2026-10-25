@@ -12,10 +12,6 @@ struct PageView: View {
     @State private var homeKeyboardOverlap: CGFloat = 0
     @Environment(\.calendarAgenda) private var calendarAgenda
 
-    private var usesArticleCover: Bool {
-        page.expansionSource.map { $0.contentStyle != .weather } ?? false
-    }
-
     private var surfacePlan: ResponseSurfacePlan {
         ResponseSurfacePlan(
             blocks: page.presentedBlocks, isHome: page.isHome,
@@ -29,7 +25,7 @@ struct PageView: View {
 
     var body: some View {
         Group {
-            if let source = page.expansionSource, usesArticleCover {
+            if let source = page.expansionSource {
                 GeometryReader { geometry in
                     expansionPage(
                         source: source,

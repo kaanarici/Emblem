@@ -212,7 +212,7 @@ struct RootView: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
             HomeSidebar(
-                topInset: max(geometry.safeAreaInsets.top, 59),
+                topInset: windowTopInset,
                 bottomInset: windowBottomInset,
                 isVisible: sidebarProgress > 0,
                 isHomeSelected: primaryOriginPageIDs == nil && primaryDestination == nil && isHomePage,

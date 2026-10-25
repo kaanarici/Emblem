@@ -385,7 +385,7 @@ export function asksQuestions(blocks: readonly Block[]): boolean {
   });
 }
 
-const deferredTypes = new Set(["chipRow", "questionList", "timeAsk", "weather", "quiz", "whatIf"]);
+const deferredTypes = new Set(["chipRow", "questionList", "timeAsk", "quiz", "whatIf"]);
 const executableKeys = new Set([
   "dockAction",
   "actions",

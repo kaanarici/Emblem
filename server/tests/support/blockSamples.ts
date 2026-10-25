@@ -6,6 +6,7 @@ type Def = {
   shape?: Record<string, Node>;
   innerType?: Node;
   element?: Node;
+  items?: Node[];
   options?: Node[];
   values?: unknown[];
   entries?: Record<string, string>;
@@ -81,6 +82,7 @@ function choicePoints(node: Node, path: string, points: Map<string, number>, see
   for (const child of [def.innerType, def.element]) {
     if (child) choicePoints(child, path, points, inner);
   }
+  def.items?.forEach((item, index) => choicePoints(item, `${path}.${index}`, points, inner));
 }
 
 function sample(node: Node, path: string, key: string, sampling: Sampling): unknown {
@@ -143,6 +145,8 @@ function sample(node: Node, path: string, key: string, sampling: Sampling): unkn
       }
       return value;
     }
+    case "tuple":
+      return def.items!.map((item, index) => sample(item, `${path}.${index}`, key, sampling));
     case "array": {
       let length = sampling.arrayLength;
       for (const check of checks(def)) {

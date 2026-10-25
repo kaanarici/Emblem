@@ -37,7 +37,7 @@ const RETRY_TEMPERATURE = 0.4;
 const REPORTED_ISSUES = 8;
 const REPORTED_BLOCK_TYPES = 24;
 const WEATHER_GUIDANCE =
-  "\n\n[Server-owned weather] Verified native weather widgets are inserted after your introduction. Do not emit weather blocks or restate their numeric facts. Fulfill EVERY other part of the user request (movies, places, decisions, etc.) with the appropriate normal components. Weather alone needs only a concise contextual introduction and pageFinish; do not invent extra sections, component families, or activities to fill a quota.";
+  "\n\n[Server-owned weather] The server inserts one native weather component per place after your introduction: today with its hours, and the week, where each day opens its own hours in place. Write only the introduction around it; never emit weather blocks, day-by-day sections or restate its numbers. Fulfill EVERY other part of the user request (movies, places, decisions, etc.) with the appropriate normal components. Weather alone needs only a concise contextual introduction and pageFinish; do not invent extra sections, component families, or activities to fill a quota.";
 const GENERIC_RETRY = [
   "[Full-page visual composition retry]",
   "Return the complete repaired page with pageMeta first and one strong primary visual.",

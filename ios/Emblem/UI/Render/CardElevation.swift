@@ -58,10 +58,6 @@ struct CardZoomSource: ViewModifier {
                 content
                     .matchedTransitionSource(id: id, in: namespace) { source in
                         source.clipShape(RoundedRectangle(cornerRadius: elevation.corner, style: .continuous))
-                            .shadow(color: .black.opacity(elevation.ambient.opacity),
-                                    radius: elevation.ambient.radius, y: elevation.ambient.y)
-                            .shadow(color: .black.opacity(elevation.contact.opacity),
-                                    radius: elevation.contact.radius, y: elevation.contact.y)
                     }
                     .modifier(resting)
             } else {

@@ -3,7 +3,7 @@ import Observation
 import CryptoKit
 
 public struct PageExpansionSource {
-    public enum ContentStyle { case article, weather, event }
+    public enum ContentStyle { case article, event }
 
     let parentPageID: UUID
     public let parentPageKey: String

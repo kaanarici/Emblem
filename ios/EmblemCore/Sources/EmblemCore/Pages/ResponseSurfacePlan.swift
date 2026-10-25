@@ -56,6 +56,14 @@ public struct ResponseSurfacePlan {
         var current = ResponseSurface.paper
         var pending: [Int] = []
         var pendingHasProse = false
+        let content = visible.filter {
+            switch Self.role(of: blocks[$0]) {
+            case .comparison: true
+            case .paper: !Self.isLead(blocks[$0])
+            default: false
+            }
+        }
+        let leadSurface: ResponseSurface = content.count == 1 && Self.isTable(blocks[content[0]]) ? .canvas : .paper
 
         func resolvePending(_ surface: ResponseSurface) {
             for index in pending { surfaces[index] = surface }
@@ -81,9 +89,10 @@ public struct ResponseSurfacePlan {
                     pendingHasProse = true
                 }
             case .paper:
-                resolvePending(.paper)
-                current = .paper
-                surfaces[index] = .paper
+                let surface = Self.isLead(blocks[index]) ? leadSurface : .paper
+                resolvePending(surface)
+                current = surface
+                surfaces[index] = surface
             case .comparison:
                 resolvePending(.canvas)
                 current = .canvas
@@ -150,6 +159,18 @@ public struct ResponseSurfacePlan {
     }
 
     private enum Role { case heading, prose, paper, comparison, followUp }
+
+    private static func isLead(_ block: Block) -> Bool {
+        if case .text(let text) = block { return text.style == .intro }
+        return false
+    }
+
+    private static func isTable(_ block: Block) -> Bool {
+        switch block {
+        case .sideBySide, .oneAgainstMany: true
+        default: false
+        }
+    }
 
     private static func role(of block: Block) -> Role? {
         switch block {

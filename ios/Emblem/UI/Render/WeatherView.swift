@@ -3,15 +3,18 @@ import EmblemCore
 
 struct WeatherView: View {
     let block: WeatherBlock
-
-    @Environment(ConversationStore.self) private var store
-    @Environment(\.renderedPage) private var renderedPage
-    @Environment(\.expansionNamespace) private var expansionNamespace
+    @State private var selectedDate: String?
     @Environment(\.blockInteraction) private var blockInteraction
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var focusedDay: WeatherBlock.DayForecast? {
-        guard let id = block.focusDay else { return nil }
-        return block.forecast.first { $0.id == id || $0.day == id }
+    init(block: WeatherBlock) {
+        self.block = block
+        _selectedDate = State(initialValue: block.focusDay == block.forecast.first?.date ? nil : block.focusDay)
+    }
+
+    private var selectedDay: WeatherBlock.DayForecast? {
+        guard let selectedDate else { return nil }
+        return block.forecast.first { $0.id == selectedDate }
     }
 
     private var forecast: [WeatherBlock.DayForecast] {
@@ -19,34 +22,32 @@ struct WeatherView: View {
     }
 
     private var hours: [WeatherBlock.HourForecast] {
-        guard let day = focusedDay else { return block.hourly ?? [] }
-        guard let date = day.date else { return [] }
-        return (block.hourly ?? []).filter { $0.time.hasPrefix(date) }
+        if let day = selectedDay { return day.hours }
+        let now = block.current.observedAt.flatMap { Int($0.dropFirst(11).prefix(2)) } ?? 0
+        let today = forecast.first?.hours ?? []
+        let start = today.lastIndex { $0.hour <= now } ?? 0
+        return Array((today.dropFirst(start) + forecast.dropFirst().flatMap(\.hours)).prefix(24))
     }
 
-    private var condition: WeatherCondition { focusedDay?.condition ?? block.current.condition }
-    private var temperature: Double { focusedDay?.high ?? block.current.tempC }
-    private var high: Double { focusedDay?.high ?? block.current.high }
-    private var low: Double { focusedDay?.low ?? block.current.low }
-    private var isDay: Bool { focusedDay != nil || block.current.isDay != false }
+    private var condition: WeatherCondition { selectedDay?.condition ?? block.current.condition }
+    private var temperature: Double { selectedDay?.high ?? block.current.tempC }
+    private var high: Double { selectedDay?.high ?? block.current.high }
+    private var low: Double { selectedDay?.low ?? block.current.low }
+    private var isDay: Bool { selectedDay != nil || block.current.isDay != false }
 
     var body: some View {
         VStack(spacing: 0) {
-            if let day = focusedDay {
-                Text(dateTitle(day))
-                    .font(.system(size: 20))
-                    .tracking(-0.5)
-                    .foregroundStyle(Theme.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 40)
-            }
+            ZStack {
+                VStack(spacing: 0) {
+                    summary
 
-            summary
-
-            if !hours.isEmpty {
-                hourlyForecast
-                    .padding(.top, 52)
+                    if !hours.isEmpty {
+                        hourlyForecast
+                            .padding(.top, 52)
+                    }
+                }
+                .id(selectedDate)
+                .transition(.opacity)
             }
 
             if !forecast.isEmpty {
@@ -54,10 +55,9 @@ struct WeatherView: View {
                     .padding(.top, hours.isEmpty ? 44 : 49)
             }
         }
-        .padding(.top, focusedDay == nil ? 80 / 3 : 0)
+        .padding(.top, 80 / 3)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity)
-        .background(Theme.responsePaper)
     }
 
     private var summary: some View {
@@ -105,28 +105,19 @@ struct WeatherView: View {
     private var hourlyForecast: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 0) {
-                ForEach(Array(hours.enumerated()), id: \.element.id) { index, hour in
+                ForEach(Array(hours.enumerated()), id: \.offset) { index, hour in
                     VStack(spacing: 0) {
-                        WeatherConditionArtwork(
-                            condition: hour.condition, isDay: hour.isDay != false, size: 40)
+                        WeatherConditionArtwork(condition: hour.condition, isDay: hour.isDay, size: 40)
 
                         Text(degrees(hour.tempC))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .padding(.top, 9)
 
-                        Text(index == 0 && focusedDay == nil ? "Now" : timeLabel(hour.time))
+                        Text(index == 0 && selectedDay == nil ? "Now" : String(format: "%02d", hour.hour))
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.inkSecondary)
                             .padding(.top, 4)
-
-                        if block.focus == .precipitation,
-                           let probability = hour.precipitationProbability {
-                            Text(percent(probability))
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.inkSecondary)
-                                .padding(.top, 6)
-                        }
                     }
                     .frame(width: 72)
                     .accessibilityElement(children: .combine)
@@ -161,15 +152,17 @@ struct WeatherView: View {
                     forecastRow(day, index: index)
                 }
             }
+            .compositingGroup()
+            .modifier(RestingElevation(elevation: Self.dayElevation))
             .padding(.horizontal, 28)
             .padding(.top, 26)
         }
     }
 
-    private static let dayElevation = CardElevation(corner: 6, ambient: (0.12, 8, 4), contact: (0.04, 1, 1))
+    private static let dayElevation = CardElevation(corner: 22, ambient: (0.12, 8, 4), contact: (0.04, 1, 1))
 
     private func forecastRow(_ day: WeatherBlock.DayForecast, index: Int) -> some View {
-        let card = expansionCard(day)
+        let selected = selectedDay?.id == day.id
         let shape = UnevenRoundedRectangle(
             topLeadingRadius: index == 0 ? 22 : 6,
             bottomLeadingRadius: index == forecast.count - 1 ? 22 : 6,
@@ -178,8 +171,10 @@ struct WeatherView: View {
             style: .continuous)
 
         return Button {
-            guard blockInteraction.allowsStoreMutation else { return }
-            openDay(card)
+            guard blockInteraction.allowsActivation else { return }
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) {
+                selectedDate = index == 0 ? nil : day.id
+            }
         } label: {
             HStack(spacing: 0) {
                 Text(Self.weekdayLabel(date: day.date, fallback: day.day))
@@ -198,14 +193,6 @@ struct WeatherView: View {
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if block.focus == .precipitation,
-                   let probability = day.precipitationProbability {
-                    Text(percent(probability))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .padding(.trailing, 8)
-                }
-
                 Text(degrees(day.high))
                     .font(.system(size: 16))
                     .frame(width: 48, alignment: .trailing)
@@ -220,49 +207,18 @@ struct WeatherView: View {
             .frame(height: 60)
             .frame(maxWidth: .infinity)
             .background(Theme.surface, in: shape)
+            .overlay(shape.strokeBorder(InputPalette.optionStroke, lineWidth: 4 / 3).opacity(selected ? 1 : 0))
             .contentShape(shape)
-            .modifier(CardZoomSource(
-                id: transitionID(card), namespace: expansionNamespace,
-                elevation: Self.dayElevation, drawsRestingShadow: false))
         }
-        .blockStoreMutationControl()
-        .buttonStyle(WeatherDayPressStyle(elevation: Self.dayElevation))
+        .blockActivationControl()
+        .buttonStyle(.pressable)
         .accessibilityIdentifier("weather-day-\(day.id)")
         .accessibilityLabel(
             "\(day.day), \(WeatherConditionArtwork.title(day.condition)), high \(degrees(day.high)), low \(degrees(day.low))")
-    }
-
-    private func expansionCard(_ day: WeatherBlock.DayForecast) -> CardCarousel.Card {
-        let date = day.date ?? day.day
-        let focus: String
-        switch block.focus {
-        case .precipitation: focus = " Include precipitation probabilities and amounts."
-        case .outdoors: focus = " Include wind, UV, sunrise and sunset for outdoor plans."
-        default: focus = ""
-        }
-        return CardCarousel.Card(
-            image: nil, imageURL: nil,
-            icon: Icon(emoji: WeatherConditionArtwork.emoji(day.condition)),
-            title: "\(block.location) · \(dateTitle(day))",
-            caption: "\(WeatherConditionArtwork.title(day.condition)) · \(degrees(day.high)) \(degrees(day.low))",
-            prompt: "Show the weather for \(block.location) on \(date). Focus on this date with its hourly forecast and the upcoming daily forecast.\(focus)",
-            conversation: nil, automation: nil)
-    }
-
-    private func transitionID(_ card: CardCarousel.Card) -> String? {
-        guard let renderedPage else { return nil }
-        return "\(renderedPage.id.uuidString):" + PageExpansionSource.cardKey(blockID: block.id, card: card)
-    }
-
-    private func openDay(_ card: CardCarousel.Card) {
-        guard let renderedPage else { return }
-        store.openExpansion(card: card, blockID: block.id, from: renderedPage, contentStyle: .weather)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var weeklySummary: String? {
-        if let summary = block.summary, !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return summary
-        }
         guard forecast.count > 1 else { return nil }
         let highs = forecast.map(\.high)
         guard let minimum = highs.min(), let maximum = highs.max() else { return nil }
@@ -274,35 +230,21 @@ struct WeatherView: View {
         return range
     }
 
-    private var precipitationProbability: Double? {
-        [block.current.precipitationProbability,
-         block.hourly?.compactMap(\.precipitationProbability).max()]
-            .compactMap { $0 }.max()
-    }
-
     private var detailLine: String? {
-        let day = focusedDay
         let values: [String?]
-        switch block.focus {
-        case .precipitation:
-            let probability = day?.precipitationProbability ?? precipitationProbability
+        if let day = selectedDay {
             values = [
-                probability.map { "Rain \(percent($0))" },
-                day == nil ? block.current.precipitationMm.map { "\(whole($0)) mm" } : nil,
+                day.day,
+                day.precipitationProbability.map { "Rain \(percent($0))" },
+                (day.windKph ?? block.current.windKph).map { "Wind \(whole($0)) km/h" },
             ]
-        case .outdoors:
-            let forecast = day ?? block.forecast.first
+        } else {
+            let rain = [block.current.precipitationProbability, hours.map(\.precipitationProbability).max()]
+                .compactMap { $0 }.max()
             values = [
-                (forecast?.windKph ?? block.current.windKph).map { "Wind \(whole($0)) km/h" },
-                forecast?.uvIndex.map { "UV \(whole($0))" },
-                forecast?.sunrise.map { "Sunrise \(timeLabel($0))" },
-                forecast?.sunset.map { "Sunset \(timeLabel($0))" },
-            ]
-        default:
-            values = [
-                day == nil ? block.current.feelsLikeC.map { "Feels \(degrees($0))" } : nil,
-                (day?.precipitationProbability ?? precipitationProbability).map { "Rain \(percent($0))" },
-                (day?.windKph ?? block.current.windKph).map { "Wind \(whole($0)) km/h" },
+                block.current.feelsLikeC.map { "Feels \(degrees($0))" },
+                rain.map { "Rain \(percent($0))" },
+                block.current.windKph.map { "Wind \(whole($0)) km/h" },
             ]
         }
         let text = values.compactMap { $0 }.joined(separator: " · ")
@@ -333,48 +275,9 @@ struct WeatherView: View {
         return weekdays[label.lowercased()] ?? fallback
     }
 
-    private func dateTitle(_ day: WeatherBlock.DayForecast) -> String {
-        guard let date = day.date else { return day.day }
-        let parser = DateFormatter()
-        parser.locale = Locale(identifier: "en_US_POSIX")
-        parser.timeZone = TimeZone(secondsFromGMT: 0)
-        parser.dateFormat = "yyyy-MM-dd"
-        guard let value = parser.date(from: date) else { return day.day }
-        let display = DateFormatter()
-        display.locale = Locale(identifier: "en_US")
-        display.timeZone = parser.timeZone
-        display.dateFormat = "MMMM d, yyyy"
-        return display.string(from: value)
-    }
-
-    private func timeLabel(_ value: String) -> String {
-        guard let time = value.split(separator: "T").last,
-              let hour = time.split(separator: ":").first,
-              let number = Int(hour) else { return "–" }
-        let minutes = time.split(separator: ":").dropFirst().first.map(String.init) ?? "00"
-        if minutes == "00" { return String(format: "%02d", number) }
-        return String(format: "%02d:%@", number, minutes)
-    }
-
     private func whole(_ value: Double) -> String { String(Int(value.rounded())) }
     private func degrees(_ value: Double) -> String { "\(whole(value))°" }
     private func percent(_ value: Double) -> String { "\(whole(value))%" }
-}
-
-private struct WeatherDayPressStyle: ButtonStyle {
-    let elevation: CardElevation
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .modifier(RestingElevation(elevation: elevation))
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
-            .sensoryFeedback(.impact(weight: .light), trigger: configuration.isPressed) { old, new in
-                isEnabled && !old && new
-            }
-    }
 }
 
 private struct WeatherConditionArtwork: View {
@@ -388,20 +291,6 @@ private struct WeatherConditionArtwork: View {
 
     static func title(_ condition: WeatherCondition, isDay: Bool = true) -> String {
         condition == .clear && isDay ? "Sunny" : condition.label
-    }
-
-    static func emoji(_ condition: WeatherCondition, isDay: Bool = true) -> String {
-        switch condition {
-        case .clear: isDay ? "☀️" : "🌙"
-        case .partlyCloudy: isDay ? "🌤️" : "☁️"
-        case .cloudy: "☁️"
-        case .fog: "🌫️"
-        case .drizzle: "🌦️"
-        case .rain: "🌧️"
-        case .snow: "🌨️"
-        case .thunderstorm: "⛈️"
-        case .wind: "💨"
-        }
     }
 }
 

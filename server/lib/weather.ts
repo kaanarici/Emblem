@@ -1,59 +1,12 @@
+import type { Block } from "./schema";
+
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEATHER_CACHE_TTL_MS = 10 * 60_000;
 
 export type WeatherTiming = (stage: string, durationMs: number) => void;
 
-type WeatherCondition =
-  | "clear"
-  | "partly-cloudy"
-  | "cloudy"
-  | "fog"
-  | "drizzle"
-  | "rain"
-  | "snow"
-  | "thunderstorm"
-  | "wind";
-
-export type WeatherPayload = {
-  location: string;
-  focus?: "overview" | "daily";
-  focusDay?: string;
-  current: {
-    observedAt: string;
-    tempC: number;
-    feels: number;
-    condition: WeatherCondition;
-    high: number;
-    low: number;
-    humid: number;
-    windKph: number;
-    precipitationMm: number;
-    precipPct: number;
-    isDay: boolean;
-  };
-  hourly: {
-    time: string;
-    tempC: number;
-    feels: number;
-    condition: WeatherCondition;
-    precipPct: number;
-    windKph: number;
-    humid: number;
-    isDay: boolean;
-  }[];
-  forecast: {
-    date: string;
-    day: string;
-    condition: WeatherCondition;
-    high: number;
-    low: number;
-    precipPct: number;
-    windKph: number;
-    uvIndex: number;
-    sunrise: string;
-    sunset: string;
-  }[];
-};
+export type WeatherPayload = Omit<Extract<Block, { type: "weather" }>, "type" | "id">;
+type WeatherDay = WeatherPayload["forecast"][number];
 
 type WeatherResult = WeatherPayload | { error: string };
 type CacheEntry = { expiresAt: number; value: WeatherPayload };
@@ -67,7 +20,7 @@ export function weatherLocationKey(weather: WeatherPayload): string | undefined 
 const placeAliases = new Map<string, string>();
 const inFlight = new Map<string, Promise<WeatherResult>>();
 
-function wmoToCondition(code: number): WeatherCondition {
+function wmoToCondition(code: number): WeatherDay["condition"] {
   if (code === 0) return "clear";
   if (code === 1 || code === 2) return "partly-cloudy";
   if (code === 3) return "cloudy";
@@ -110,18 +63,18 @@ export async function getWeather(
     return { error: "Invalid forecast date" };
   const requestKey = placeKey(place);
   const hit = cached(requestKey, onTiming);
-  if (hit) return projectWeatherDate(hit, options.date);
+  if (hit) return focusWeatherDate(hit, options.date);
 
   const pending = inFlight.get(requestKey);
   if (pending) {
     onTiming?.("weather.cache", 0);
-    return projectWeatherDate(await pending, options.date);
+    return focusWeatherDate(await pending, options.date);
   }
 
   const request = loadWeather(place, abortSignal, onTiming, requestKey);
   inFlight.set(requestKey, request);
   try {
-    return projectWeatherDate(await request, options.date);
+    return focusWeatherDate(await request, options.date);
   } finally {
     if (inFlight.get(requestKey) === request) inFlight.delete(requestKey);
   }
@@ -161,7 +114,7 @@ async function loadWeather(
   const fc = await fetch(
     `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}` +
       `&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,is_day` +
-      `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m,is_day` +
+      `&hourly=temperature_2m,precipitation_probability,weather_code,is_day` +
       `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,uv_index_max,sunrise,sunset` +
       `&timezone=auto&forecast_days=7` +
       `&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm`,
@@ -183,11 +136,8 @@ async function loadWeather(
     hourly: {
       time: string[];
       temperature_2m: number[];
-      apparent_temperature: number[];
-      relative_humidity_2m: number[];
       precipitation_probability: number[];
       weather_code: number[];
-      wind_speed_10m: number[];
       is_day: number[];
     };
     daily: {
@@ -233,11 +183,8 @@ async function loadWeather(
     typeof data.current.time !== "string" ||
     !completeSeries(data.hourly, [
       "temperature_2m",
-      "apparent_temperature",
-      "relative_humidity_2m",
       "precipitation_probability",
       "weather_code",
-      "wind_speed_10m",
       "is_day",
     ]) ||
     !completeSeries(data.daily, [
@@ -256,7 +203,19 @@ async function loadWeather(
     return { error: "Forecast data incomplete" };
   }
 
-  const label = loc.name;
+  const hours = new Map<string, WeatherDay["hours"]>();
+  data.hourly.time.forEach((time, index) => {
+    const date = time.slice(0, 10);
+    const day = hours.get(date) ?? [];
+    day.push([
+      Number(time.slice(11, 13)),
+      Math.round(data.hourly.temperature_2m[index]),
+      wmoToCondition(data.hourly.weather_code[index]),
+      Math.round(data.hourly.precipitation_probability[index]),
+      data.hourly.is_day[index] === 1,
+    ]);
+    hours.set(date, day);
+  });
   const forecast = data.daily.time.map((iso, index) => ({
     date: iso,
     day: index === 0 ? "Today" : DAY_NAMES[new Date(`${iso}T12:00:00Z`).getUTCDay()],
@@ -268,6 +227,7 @@ async function loadWeather(
     uvIndex: Math.round(data.daily.uv_index_max[index] ?? 0),
     sunrise: data.daily.sunrise[index],
     sunset: data.daily.sunset[index],
+    hours: hours.get(iso) ?? [],
   }));
   const today = forecast[0];
   if (!today) return { error: "forecast data incomplete" };
@@ -275,20 +235,8 @@ async function loadWeather(
     0,
     data.hourly.time.findLastIndex((time) => time <= data.current.time),
   );
-  const hourly = data.hourly.time.map((time, index) => {
-    return {
-      time,
-      tempC: Math.round(data.hourly.temperature_2m[index]),
-      feels: Math.round(data.hourly.apparent_temperature[index]),
-      condition: wmoToCondition(data.hourly.weather_code[index]),
-      precipPct: Math.round(data.hourly.precipitation_probability[index] ?? 0),
-      windKph: Math.round(data.hourly.wind_speed_10m[index] ?? 0),
-      humid: Math.round(data.hourly.relative_humidity_2m[index] ?? 0),
-      isDay: data.hourly.is_day[index] === 1,
-    };
-  });
   const value: WeatherPayload = {
-    location: label,
+    location: loc.name,
     current: {
       observedAt: data.current.time,
       tempC: Math.round(data.current.temperature_2m),
@@ -299,10 +247,9 @@ async function loadWeather(
       humid: Math.round(data.current.relative_humidity_2m),
       windKph: Math.round(data.current.wind_speed_10m),
       precipitationMm: data.current.precipitation,
-      precipPct: hourly[currentHour]?.precipPct ?? 0,
+      precipPct: Math.round(data.hourly.precipitation_probability[currentHour] ?? 0),
       isDay: data.current.is_day === 1,
     },
-    hourly,
     forecast,
   };
   weatherLocations.set(value, canonicalKey);
@@ -321,34 +268,21 @@ export function isWeatherDate(date: string): boolean {
   );
 }
 
-export function weatherDateInRequest(request: string): string | undefined {
-  const match =
-    /^Show the weather for [^\r\n]+ on (\d{4}-\d{2}-\d{2})\. Focus on this date with its hourly forecast and the upcoming daily forecast\.(?: Include precipitation probabilities and amounts\.| Include wind, UV, sunrise and sunset for outdoor plans\.)?$/.exec(
-      request.trim(),
-    );
-  return match?.[1];
+export function weatherBrief(weather: WeatherPayload): string {
+  const { current } = weather;
+  const days = weather.forecast
+    .map((day) => `${day.day} ${day.condition} ${day.high}°/${day.low}° rain ${day.precipPct}%`)
+    .join("; ");
+  const focus = weather.focusDay ? ` Selected day: ${weather.focusDay}.` : "";
+  return `${weather.location} now ${current.tempC}°C ${current.condition}, feels ${current.feels}°, rain ${current.precipPct}%, wind ${current.windKph} km/h.${focus} Days: ${days}.`;
 }
 
-function projectWeatherDate(result: WeatherResult, date?: string): WeatherResult {
-  if ("error" in result) return result;
-  let projected: WeatherPayload;
-  if (date) {
-    if (!result.forecast.some((day) => day.date === date))
-      return { error: "Requested date is outside the available seven-day forecast" };
-    const hourly = result.hourly.filter(
-      (hour) => hour.time.startsWith(`${date}T`) && Number(hour.time.slice(11, 13)) % 3 === 0,
-    );
-    if (hourly.length !== 8)
-      return { error: "Complete hourly forecast unavailable for requested date" };
-    projected = { ...result, focus: "daily", focusDay: date, hourly };
-  } else {
-    const index = Math.max(
-      0,
-      result.hourly.findLastIndex((hour) => hour.time <= result.current.observedAt),
-    );
-    projected = { ...result, focus: "overview", hourly: result.hourly.slice(index, index + 24) };
-  }
+function focusWeatherDate(result: WeatherResult, date?: string): WeatherResult {
+  if ("error" in result || !date) return result;
+  if (!result.forecast.some((day) => day.date === date))
+    return { error: "Requested date is outside the available seven-day forecast" };
+  const focused = { ...result, focusDay: date };
   const key = weatherLocationKey(result);
-  if (key) weatherLocations.set(projected, key);
-  return projected;
+  if (key) weatherLocations.set(focused, key);
+  return focused;
 }
