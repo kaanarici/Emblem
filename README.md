@@ -1,26 +1,36 @@
 # Emblem
 
 <p align="center">
-  <img src="docs/media/hero.png" alt="Four Emblem screens: the Home greeting, trip questions, the map lens and a generated trip page" width="100%">
+  <img src="docs/media/hero.png" alt="Four iPhone screens: the Home greeting with recent chats and things to ask, a California road trip page with a route map, the map lens picking an area of New York, and the San Francisco weather with an hourly forecast" width="100%">
 </p>
 
-<p align="center"><b>An open-source rebuild inspired by Monogram AI, in SwiftUI.</b></p>
+<p align="center"><b>Ask anything. Get a page, not a paragraph.</b></p>
 
-Ask anything, and Emblem answers with a native iPhone page instead of a chat bubble. Trips become maps and day-by-day plans. Recipes become step cards. Choices become side-by-side comparisons. Your calendar becomes a day you can tap into.
+Emblem is an iPhone assistant that answers with native pages. Ask about a trip and you get a map and a day-by-day plan. Ask for dinner and you get the recipe as step cards. Ask which of two things to pick and you get them side by side. It is written in SwiftUI and is open source.
 
 ## What it does
 
-- **Generated pages.** Cards, carousels, maps, charts, comparisons, steps, quizzes and questions, streamed from the server and drawn natively in SwiftUI.
-- **Question sheets.** When an answer needs more from you, it asks first with a sheet of choices.
-- **Map lens.** Pick an area by moving the map under a Liquid Glass lens.
-- **Calendar.** Swipe through your days. Every event opens into its own page.
-- **Voice.** Hold the mic, and a glass wave rises while you speak.
+- **Answers become pages.** Maps, timelines, recipes, comparisons, charts, cards, quizzes and more. The server streams typed blocks and the phone draws each one natively as it arrives.
+- **It asks before it guesses.** When a request is open-ended, a sheet of quick questions comes first.
+- **Map lens.** Pick an area by moving the map under a glass lens.
+- **Voice.** Hold the mic and a glass wave rises while you speak. Slide up to keep listening hands-free.
+- **Calendar you can tap into.** Your iPhone calendar, Reminders and Google Calendar in one place, by day, week or month. It shows your free time, and every event opens into its own page with timing, a map and what to do next. Add events and to-dos from the dock.
+- **Weather.** One card with the current conditions, the hours ahead and the week. Tap a day to see its hours.
+- **Anodized themes.** Light or dark, with accent colors like Aluminum, Space Black, Blue and Purple.
 - **Connectors.** Gmail and Google Calendar through Composio. Apple Calendar, Reminders and Apple Music on the phone.
-- **Models.** Any OpenRouter model with tool calling and structured outputs (tested with Claude, Gemini, DeepSeek, Mistral and GPT-6 Luna), Cerebras, OpenAI, Google or Groq. Or Apple Intelligence on the phone.
+- **Any model.** Any OpenRouter model with tool calling and structured outputs (tested with Claude, Gemini, DeepSeek, Mistral and GPT-6 Luna), Cerebras, OpenAI, Google or Groq. Or Apple Intelligence on the phone.
 - **3D object icons and step illustrations.** Generated once with fal (or Gemini without a fal key), then cached.
 
 <p align="center">
-  <img src="docs/media/features.png" alt="Four Emblem screens: a calendar day, an event page, an interactive compound-interest page and coffee shop cards" width="100%">
+  <img src="docs/media/answers.png" alt="Four iPhone screens: a question sheet asking what kind of route sounds best, a chickpea curry recipe page, a Kyoto and Osaka comparison, and the same comparison opened full screen" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/media/calendar.png" alt="Four iPhone screens: a calendar day with a to-do, free time and the evening's events, the week view, the month view, and the page for Dinner at Nopa" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/media/app.png" alt="Three iPhone screens: the glass listening wave with a live transcript, the sidebar with search and pinned chats, and the accent color picker in Settings" width="100%">
 </p>
 
 ## How it works
@@ -105,7 +115,7 @@ EMBLEM_DEVICE_BUNDLE_ID=com.you.emblem ios/run-device.sh
 
 ## How it was built
 
-Emblem was built with Claude Code and Codex. It is not affiliated with Monogram. Huge respect to the Monogram team.
+Emblem was built with Claude Code and Codex. It started as a project inspired by Monogram and is not affiliated with it.
 
 ## License
 
