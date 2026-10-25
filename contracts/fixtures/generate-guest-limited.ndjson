@@ -1,0 +1,2 @@
+{"type":"error","id":"generation-error","code":"rate_limited","message":"You've reached the guest limit for now. Sign in to keep going.","retryable":true}
+{"type":"terminal","id":"terminal","status":"failed","blockCount":0,"persisted":false}

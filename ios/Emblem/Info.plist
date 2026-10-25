@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Emblem</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ClerkPublishableKey</key>
+	<string>$(EMBLEM_CLERK_PUBLISHABLE_KEY)</string>
+	<key>EmblemPCCSigningConfiguration</key>
+	<string>$(EMBLEM_CODE_SIGN_ENTITLEMENTS)</string>
+	<key>EmblemServerURL</key>
+	<string>$(EMBLEM_SERVER_URL)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSAppleIntelligenceUsageDescription</key>
+	<string>Emblem uses the Apple model you choose to generate interactive pages.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Emblem opens and plays the songs you ask for.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Emblem reads your calendar to plan your day and adds events you approve.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Emblem adds events you approve to your calendar.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Emblem attaches photos you take to your requests.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Emblem finds the person you ask about so you can call, text or email them.</string>
+	<key>NSHomeKitUsageDescription</key>
+	<string>Emblem shows your Home accessories and switches the ones you tap.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Emblem shows your position on maps and gets directions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Emblem listens while you hold the microphone.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Emblem shows the reminders you ask about and adds ones you tap to save.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Emblem transcribes your speech on-device to generate pages.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>

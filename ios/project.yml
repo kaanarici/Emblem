@@ -1,0 +1,196 @@
+name: Emblem
+options:
+  bundleIdPrefix: dev.emblem
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+packages:
+  ClerkiOS:
+    url: https://github.com/clerk/clerk-ios
+    exactVersion: 1.2.6
+  EmblemCore:
+    path: EmblemCore
+targets:
+  Emblem:
+    type: application
+    platform: iOS
+    sources:
+      - path: Emblem
+        excludes:
+          - Fixtures
+          - ObjectImages
+          - ObjectMeta.json
+    postBuildScripts:
+      - name: Optional licensed icon pack
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          bundle="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          trash_if_present() {
+            for item in "$@"; do
+              if [ -e "$item" ]; then
+                /usr/bin/trash --stopOnError "$item"
+              fi
+            done
+          }
+          if [ -z "$EMBLEM_OBJECT_ASSET_DIR" ] && [ -f "$SRCROOT/../server/objects-256/meta.json" ]; then
+            EMBLEM_OBJECT_ASSET_DIR="$SRCROOT/../server/objects-256"
+          fi
+          if [ -z "$EMBLEM_OBJECT_ASSET_DIR" ]; then
+            common=$(git -C "$SRCROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+            if [ -n "$common" ] && [ -f "$common/../server/objects-256/meta.json" ]; then
+              EMBLEM_OBJECT_ASSET_DIR="$common/../server/objects-256"
+            fi
+          fi
+          if [ -z "$EMBLEM_OBJECT_ASSET_DIR" ]; then
+            trash_if_present "$bundle/ObjectImages" "$bundle/ObjectMeta.json" "$bundle/.emblem-object-pack"
+            if [ "$EMBLEM_REQUIRE_LICENSED_ICONS" = "YES" ]; then
+              echo "error: official build requires EMBLEM_OBJECT_ASSET_DIR" >&2
+              exit 1
+            fi
+            exit 0
+          fi
+          if [ ! -d "$EMBLEM_OBJECT_ASSET_DIR/images" ] || [ ! -f "$EMBLEM_OBJECT_ASSET_DIR/meta.json" ]; then
+            echo "error: EMBLEM_OBJECT_ASSET_DIR must contain images/ and meta.json" >&2
+            exit 1
+          fi
+          source_image_count=$(find "$EMBLEM_OBJECT_ASSET_DIR/images" -type f -name '*.png' | wc -l | tr -d ' ')
+          if [ "$source_image_count" -eq 0 ]; then
+            echo "error: licensed icon pack contains no PNG images" >&2
+            exit 1
+          fi
+          mkdir -p "$bundle"
+          fingerprint=$(stat -f '%m:%z' "$EMBLEM_OBJECT_ASSET_DIR/meta.json")
+          fingerprint="$fingerprint:$(stat -f '%m' "$EMBLEM_OBJECT_ASSET_DIR/images"):$source_image_count"
+          bundle_image_count=$(find "$bundle/ObjectImages" -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+          if [ -d "$bundle/ObjectImages" ] && [ -f "$bundle/ObjectMeta.json" ] && [ -f "$bundle/.emblem-object-pack" ] && [ "$(cat "$bundle/.emblem-object-pack")" = "$fingerprint" ] && [ "$bundle_image_count" = "$source_image_count" ]; then
+            exit 0
+          fi
+          trash_if_present "$bundle/ObjectImages"
+          cp -R "$EMBLEM_OBJECT_ASSET_DIR/images" "$bundle/ObjectImages"
+          cp "$EMBLEM_OBJECT_ASSET_DIR/meta.json" "$bundle/ObjectMeta.json"
+          printf '%s' "$fingerprint" > "$bundle/.emblem-object-pack"
+          bundle_image_count=$(find "$bundle/ObjectImages" -type f -name '*.png' | wc -l | tr -d ' ')
+          if [ ! -f "$bundle/ObjectMeta.json" ] || [ "$bundle_image_count" != "$source_image_count" ]; then
+            echo "error: licensed icon pack was not copied completely" >&2
+            exit 1
+          fi
+    dependencies:
+      - package: ClerkiOS
+        product: ClerkKit
+      - package: EmblemCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(EMBLEM_BUNDLE_ID)
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_ENTITLEMENTS: "$(EMBLEM_CODE_SIGN_ENTITLEMENTS)"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) $(EMBLEM_HOMEKIT_CONDITION_$(EMBLEM_HOMEKIT))"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: emblem
+    info:
+      path: Emblem/Info.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        LSApplicationQueriesSchemes: [comgooglemaps]
+        CFBundleDisplayName: Emblem
+        EmblemPCCSigningConfiguration: "$(EMBLEM_CODE_SIGN_ENTITLEMENTS)"
+        ClerkPublishableKey: "$(EMBLEM_CLERK_PUBLISHABLE_KEY)"
+        EmblemServerURL: "$(EMBLEM_SERVER_URL)"
+        NSMicrophoneUsageDescription: "Emblem listens while you hold the microphone."
+        NSSpeechRecognitionUsageDescription: "Emblem transcribes your speech on-device to generate pages."
+        NSLocationWhenInUseUsageDescription: "Emblem shows your position on maps and gets directions."
+        NSCalendarsFullAccessUsageDescription: "Emblem reads your calendar to plan your day and adds events you approve."
+        NSCalendarsWriteOnlyAccessUsageDescription: "Emblem adds events you approve to your calendar."
+        NSCameraUsageDescription: "Emblem attaches photos you take to your requests."
+        NSRemindersFullAccessUsageDescription: "Emblem shows the reminders you ask about and adds ones you tap to save."
+        NSContactsUsageDescription: "Emblem finds the person you ask about so you can call, text or email them."
+        NSHomeKitUsageDescription: "Emblem shows your Home accessories and switches the ones you tap."
+        NSAppleMusicUsageDescription: "Emblem opens and plays the songs you ask for."
+        NSAppleIntelligenceUsageDescription: "Emblem uses the Apple model you choose to generate interactive pages."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleURLTypes:
+          - CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER)
+            CFBundleURLSchemes: [$(PRODUCT_BUNDLE_IDENTIFIER)]
+  EmblemGenerationTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: EmblemGenerationTests
+    dependencies:
+      - package: EmblemCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  EmblemRecordingTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: EmblemRecordingTests
+    dependencies:
+      - target: Emblem
+      - package: EmblemCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  EmblemUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: EmblemUITests
+    dependencies:
+      - target: Emblem
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(EMBLEM_BUNDLE_ID).uitests
+
+schemes:
+  Emblem:
+    build:
+      targets:
+        Emblem: [run, archive]
+    management:
+      shared: true
+  EmblemGenerationTests:
+    build:
+      targets:
+        EmblemGenerationTests: [test]
+    test:
+      targets:
+        - EmblemGenerationTests
+    management:
+      shared: true
+  EmblemUITests:
+    build:
+      targets:
+        Emblem: [run]
+        EmblemUITests: [test]
+    test:
+      targets:
+        - EmblemUITests
+    management:
+      shared: true
+  EmblemRecordingTests:
+    build:
+      targets:
+        Emblem: [run]
+        EmblemRecordingTests: [test]
+    test:
+      targets:
+        - EmblemRecordingTests
+    management:
+      shared: true

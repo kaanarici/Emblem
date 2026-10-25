@@ -1,0 +1,4 @@
+{"type":"pagePreview","id":"page-preview","revision":1,"attempt":1,"blocks":[],"draft":null}
+{"type":"error","id":"generation-error","code":"cancelled","message":"Generation cancelled.","retryable":false}
+{"type":"metric","id":"generation-timing","route":"model","stages":{"total":50},"percentiles":{"total":{"p50":50,"p90":75,"p95":75}},"sampleSize":4}
+{"type":"terminal","id":"terminal","status":"cancelled","blockCount":0,"persisted":false}

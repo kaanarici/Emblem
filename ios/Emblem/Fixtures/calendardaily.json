@@ -1,0 +1,3 @@
+{"type":"pageMeta","id":"meta","title":"Calendar"}
+{"type":"text","id":"intro","body":"On **Tuesday, October 13th** you have a run club, a design sync and design review notes due at 5 PM.","style":"intro"}
+{"type":"eventCard","id":"day","dayLabel":"Tuesday, October 13th","events":[{"timeRange":"09:30 - 10:45","title":"Morning run club","place":"Room 202, Linden Hall"},{"timeRange":"11:00 - 12:15","title":"Product design sync","place":"Studio B, Harbor Building"},{"timeRange":"17:00 - 17:05","title":"Due 5 PM: Design review notes"}]}

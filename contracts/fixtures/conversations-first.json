@@ -1,0 +1,44 @@
+{
+  "pinned": [
+    {
+      "archived": false,
+      "image": {
+        "kind": "photo",
+        "query": "query-242"
+      },
+      "imageURL": "https://images.example/request-lisbon-2.jpg",
+      "key": "lisbon",
+      "pinnedAt": 1792937280000,
+      "preview": "body-230",
+      "title": "Our Lisbon trip",
+      "updatedAt": 1792936920000
+    }
+  ],
+  "conversations": [
+    {
+      "archived": false,
+      "image": {
+        "kind": "photo",
+        "query": "query-242"
+      },
+      "imageURL": "https://images.example/request-lima.jpg",
+      "key": "lima",
+      "preview": "body-230",
+      "title": "lima",
+      "updatedAt": 1792937160000
+    },
+    {
+      "archived": false,
+      "image": {
+        "kind": "photo",
+        "query": "query-242"
+      },
+      "imageURL": "https://images.example/request-oslo.jpg",
+      "key": "oslo",
+      "preview": "body-230",
+      "title": "oslo",
+      "updatedAt": 1792937100000
+    }
+  ],
+  "nextCursor": "recent:[\"\\\"https://clerk.example|fixture\\\"\",\"false\",null,\"1792937100000\",\"1792937100000.002\",\"\\\"00000010012conversationSummaries\\\"\"]"
+}

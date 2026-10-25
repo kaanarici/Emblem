@@ -1,0 +1,7 @@
+node_modules
+.next
+convex/_generated
+objects-256
+public
+package-lock.json
+.convex

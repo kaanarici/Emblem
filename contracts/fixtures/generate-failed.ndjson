@@ -1,0 +1,4 @@
+{"type":"pagePreview","id":"page-preview","revision":1,"attempt":1,"blocks":[],"draft":null}
+{"type":"error","id":"generation-error","code":"generation_failed","message":"I couldn't finish generating this page. Ask me again in a moment.","retryable":true}
+{"type":"metric","id":"generation-timing","route":"model","stages":{"total":50},"percentiles":{"total":{"p50":50,"p90":75,"p95":75}},"sampleSize":3}
+{"type":"terminal","id":"terminal","status":"failed","blockCount":0,"persisted":false}

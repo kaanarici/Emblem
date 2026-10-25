@@ -1,0 +1,12 @@
+Emblem
+Copyright 2026 Kaan Aricioglu
+Licensed under the GNU Affero General Public License, version 3 only. See LICENSE.
+
+This product includes VariableBlur (https://github.com/nikstar/VariableBlur),
+MIT License. See ios/Emblem/Resources/Licenses/VariableBlur.txt.
+
+This product includes icons generated from Hugeicons
+(@hugeicons/core-free-icons 4.3.5, https://github.com/hugeicons/hugeicons),
+MIT License. See ios/Emblem/Resources/Licenses/Hugeicons.txt.
+
+Gmail and Google Calendar are trademarks of Google LLC.

@@ -1,0 +1,18 @@
+{
+  "pinned": [],
+  "conversations": [
+    {
+      "archived": true,
+      "image": {
+        "kind": "photo",
+        "query": "query-242"
+      },
+      "imageURL": "https://images.example/request-quito.jpg",
+      "key": "quito",
+      "preview": "body-230",
+      "title": "quito",
+      "updatedAt": 1792937220000
+    }
+  ],
+  "nextCursor": null
+}

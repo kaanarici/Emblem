@@ -1,0 +1,18 @@
+{
+  "pinned": [],
+  "conversations": [
+    {
+      "archived": false,
+      "image": {
+        "kind": "photo",
+        "query": "query-242"
+      },
+      "imageURL": "https://images.example/request-kyoto.jpg",
+      "key": "kyoto",
+      "preview": "body-230",
+      "title": "kyoto",
+      "updatedAt": 1792937040000
+    }
+  ],
+  "nextCursor": null
+}
