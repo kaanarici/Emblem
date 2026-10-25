@@ -162,10 +162,10 @@ function imageWarmer(): (node: unknown) => void {
   return (node) => {
     for (const spec of imageSpecsIn(node)) {
       if (warmed.size >= MAX_WARMED_IMAGES) return;
-      const key = cacheKey(spec.query, spec.kind, spec.aspect);
+      const key = cacheKey(spec.query, spec.kind, spec.aspect, spec.placement);
       if (warmed.has(key)) continue;
       warmed.add(key);
-      warmImage(spec.query, spec.kind, spec.aspect);
+      warmImage(spec.query, spec.kind, spec.aspect, spec.placement);
     }
   };
 }

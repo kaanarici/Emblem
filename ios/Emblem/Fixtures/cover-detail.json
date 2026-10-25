@@ -1,0 +1,4 @@
+{"type":"pageMeta","id":"meta","title":"Kinkaku-ji"}
+{"type":"hero","id":"cover","image":{"query":"Kinkaku-ji pavilion over Kyoko-chi pond Kyoto","kind":"photo","aspect":"landscape"},"imageURL":"/art/cover-kinkaku.png","aspect":"wide"}
+{"type":"titleBlock","id":"lead","title":"Kinkaku-ji","summary":"A gold leaf pavilion mirrored in a still pond, calmest right at opening.","tags":["Zen temple","Kita ward"]}
+{"type":"text","id":"visit","body":"Arrive when the gates open at 9 AM, while the pond is still enough to hold the reflection.","style":"body"}

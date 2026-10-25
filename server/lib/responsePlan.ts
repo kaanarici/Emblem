@@ -344,6 +344,7 @@ export function finalizePagePlan(
   if (mode?.articleLead) {
     const modelMeta = page.find((block) => block.type === "pageMeta");
     const leadBlock = page.find((block) => block.type === "titleBlock");
+    const cover = page.find((block) => block.type === "hero");
     page = page.filter(
       (block) =>
         block.type !== "pageMeta" &&
@@ -351,6 +352,7 @@ export function finalizePagePlan(
         (block.type !== "titleBlock" || block === leadBlock) &&
         !(block.type === "text" && block.style === "intro"),
     );
+    if (cover) page.unshift(cover);
     const articleTitle = mode.articleTitle?.trim();
     page.unshift(
       modelMeta

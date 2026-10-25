@@ -25,6 +25,7 @@ export async function GET(req: Request) {
     rawAspect === "square" || rawAspect === "portrait" || rawAspect === "landscape"
       ? rawAspect
       : undefined;
+  const placement = searchParams.get("placement") === "hero" ? "hero" : "card";
   if (!query) return Response.json({ url: null }, { status: 400 });
   if (query.length > 4_096 || (searchParams.get("exclude")?.length ?? 0) > 4_096) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
   }
   const exclude = searchParams.get("exclude")?.trim() || undefined;
   if (kind !== "object" && kind !== "generated" && !exclude && !isGeneratedStepImageQuery(query)) {
-    const cached = await cachedImageURL(query, kind, aspect);
+    const cached = await cachedImageURL(query, kind, aspect, placement);
     if (cached) return Response.json({ url: cached }, { headers: cacheHeaders(cached) });
   }
   const route =
@@ -90,7 +91,7 @@ export async function GET(req: Request) {
     return Response.json({ url: null }, { headers: cacheHeaders(null) });
   }
 
-  const url = await resolveImageCached(query, kind, aspect, exclude);
+  const url = await resolveImageCached(query, kind, aspect, exclude, placement);
   return Response.json({ url }, { headers: cacheHeaders(url) });
 }
 

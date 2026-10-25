@@ -1,4 +1,5 @@
 import type { ImageAspect } from "@/lib/blockPrimitives";
+import { MAX_IMAGE_BYTES } from "@/lib/imageBytes";
 import { lookup } from "node:dns";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -10,7 +11,82 @@ const PROBE_BATCHES = 3;
 const PROBE_DEADLINE_MS = 6_000;
 const IMAGE_FETCH_MS = 2_000;
 const MIN_IMAGE_BYTES = 1_024;
-const MAX_IMAGE_BYTES = 8 << 20;
+export const USER_AGENT = "EmblemApp/1.0 (https://github.com/kaanarici/emblem)";
+
+const NON_PHOTO_ASSET =
+  /(?:^|[/_. -])(flag|coat[ _-]?of[ _-]?arms|logo|seal|emblem|icon|symbol|diagram|wordmark|map)(?:[/_. ?&-]|$)|\.svg(?:\.png)?(?:\?|$)/i;
+
+export function isLikelyPhotographURL(url: string): boolean {
+  try {
+    return !NON_PHOTO_ASSET.test(decodeURIComponent(url));
+  } catch {
+    return !NON_PHOTO_ASSET.test(url);
+  }
+}
+
+const IMAGE_EXT = /\.(jpe?g|png|webp|avif|gif|bmp)(\?|$)/i;
+const DYNAMIC_IMAGE = /\/is\/image\/|[?&](fmt|format)=(png|jpe?g)(?:[-&]|$)/i;
+const IMAGE_CDN =
+  /^https:\/\/(?:images|plus)\.unsplash\.com\/|^https:\/\/assets\.lummi\.ai\/assets\//i;
+const JUNK_IMAGE = /\.svg(\?|$)|favicon|sprite|(?:^|[^a-z])icons?(?:[^a-z]|$)|1x1/i;
+const LOGO_URL = /(?:^|[^a-z])(?:logos?|lockup|wordmark|brandmark)(?:[^a-z]|$)/i;
+
+export function isWebImageCandidate(url: string, kind: string): boolean {
+  return (
+    url.startsWith("https") &&
+    (IMAGE_EXT.test(url) || DYNAMIC_IMAGE.test(url) || IMAGE_CDN.test(url)) &&
+    !JUNK_IMAGE.test(url) &&
+    (kind === "logo" || !LOGO_URL.test(url)) &&
+    (kind !== "photo" || isLikelyPhotographURL(url))
+  );
+}
+
+export type ImagePlacement = "card" | "hero";
+
+export function minimumShortEdge(kind: string, placement: ImagePlacement): number {
+  if (kind === "logo") return 128;
+  return placement === "hero" ? 600 : 320;
+}
+
+const WATERMARKED_HOST =
+  /(?:^|\.)(?:shutterstock\.com|alamy\.[a-z.]+|gettyimages\.[a-z.]+|istockphoto\.com|dreamstime\.com|123rf\.com|depositphotos\.com|stock\.adobe\.com|ftcdn\.net|bigstockphoto\.com|canstockphoto\.[a-z.]+|agefotostock\.com|superstock\.com|pond5\.com|vectorstock\.com|pinimg\.com|pinterest\.[a-z.]+|encrypted-tbn\d*\.gstatic\.com|mm\.bing\.net)$/i;
+
+function isAllowedImageSource(url: string): boolean {
+  try {
+    const { hostname, pathname } = new URL(url);
+    return !WATERMARKED_HOST.test(hostname) && !/watermark/i.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+const WIKIMEDIA_THUMB =
+  /^https:\/\/(?:upload|thumb)\.wikimedia\.org\/(wikipedia\/[^/]+)\/thumb\/([0-9a-f]\/[0-9a-f]{2}\/[^/]+\.(?:jpe?g|png|webp|gif))\/(\d+)px-[^/?]+(?:\?.*)?$/i;
+const SIZE_SUFFIX = /-\d{2,4}x\d{2,4}(\.(?:jpe?g|png|webp))$/i;
+const SIZE_PARAMS = ["w", "h", "width", "height", "resize", "fit", "size"];
+const FULL_SIZE_PX = 1280;
+
+export function fullSizeVariants(url: string): string[] {
+  const wikimedia = WIKIMEDIA_THUMB.exec(url);
+  if (wikimedia) {
+    return Number(wikimedia[3]) < FULL_SIZE_PX
+      ? [`https://upload.wikimedia.org/${wikimedia[1]}/${wikimedia[2]}`, url]
+      : [url];
+  }
+  const youtube =
+    /^(https:\/\/i\.ytimg\.com\/vi\/[^/]+\/)(?:default|mqdefault|hqdefault|sddefault)\.jpg$/.exec(
+      url,
+    );
+  if (youtube) return [`${youtube[1]}maxresdefault.jpg`, url];
+  const original = new URL(url);
+  original.pathname = original.pathname.replace(SIZE_SUFFIX, "$1");
+  const thumbnailParam = SIZE_PARAMS.some((name) => {
+    const value = original.searchParams.get(name);
+    return value !== null && Number.parseInt(value, 10) < FULL_SIZE_PX;
+  });
+  if (thumbnailParam) SIZE_PARAMS.forEach((name) => original.searchParams.delete(name));
+  return original.href === new URL(url).href ? [url] : [original.href, url];
+}
 
 function privateAddress(address: string): boolean {
   if (isIP(address) === 6) {
@@ -65,7 +141,7 @@ async function fetchPublicImage(
           agent: false,
           lookup: publicLookup,
           signal: init?.signal ?? undefined,
-          headers: { "Accept-Encoding": "identity" },
+          headers: { "Accept-Encoding": "identity", "User-Agent": USER_AGENT },
         },
         resolve,
       );
@@ -110,7 +186,7 @@ function matchesAspect(width: number, height: number, aspect?: ImageAspect): boo
   return ratio >= 0.75 && ratio <= 1.33;
 }
 
-export function fitsAspect(width: number, height: number, aspect?: ImageAspect): boolean {
+function fitsAspect(width: number, height: number, aspect?: ImageAspect): boolean {
   if (aspect !== "square" || width <= 0 || height <= 0) return matchesAspect(width, height, aspect);
   const ratio = width / height;
   return ratio >= 0.5 && ratio <= 2;
@@ -140,13 +216,23 @@ export async function probeImageCandidates(
   options: {
     aspect?: ImageAspect;
     photo?: boolean;
+    minEdge?: number;
     signal?: AbortSignal;
     fetchImage?: typeof fetchPublicImage;
   } = {},
 ): Promise<Verdict> {
-  const { aspect, photo = false, signal: parentSignal, fetchImage = fetchPublicImage } = options;
+  const {
+    aspect,
+    photo = false,
+    minEdge = minimumShortEdge("photo", "card"),
+    signal: parentSignal,
+    fetchImage = fetchPublicImage,
+  } = options;
   const seen = new Set<string>();
-  const unique = candidates.filter((u) => u && !seen.has(u) && seen.add(u));
+  const unique = candidates
+    .filter((u) => u && isAllowedImageSource(u))
+    .flatMap(fullSizeVariants)
+    .filter((u) => isAllowedImageSource(u) && !seen.has(u) && seen.add(u));
   if (unique.length === 0) return { url: null, verified: false, tried: 0 };
 
   const timeout = AbortSignal.timeout(PROBE_DEADLINE_MS);
@@ -168,7 +254,7 @@ export async function probeImageCandidates(
     ) {
       const eligible = unique.slice(start, start + CANDIDATE_PROBES);
       const probes = eligible.map(async (url) => {
-        const result = await probeCandidate(url, signal, fetchImage, photo);
+        const result = await probeCandidate(url, signal, fetchImage, photo, minEdge);
         if (result !== null) tried++;
         return result;
       });
@@ -194,6 +280,7 @@ async function probeCandidate(
   parentSignal: AbortSignal,
   fetchImage: typeof fetchPublicImage,
   photo: boolean,
+  minEdge: number,
 ): Promise<{ width: number; height: number } | false | null> {
   try {
     const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(IMAGE_FETCH_MS)]);
@@ -210,6 +297,7 @@ async function probeCandidate(
     if (!["jpeg", "png", "webp", "avif", "gif", "heif", "tiff"].includes(metadata.format)) {
       return false;
     }
+    if (Math.min(metadata.width, metadata.height) < minEdge) return false;
     if (photo && (await looksLikeGraphic(image))) return false;
     return metadata.autoOrient;
   } catch {

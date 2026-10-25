@@ -178,6 +178,7 @@ describe("signed catalog image route and actual batched admission", () => {
       "photo",
       "portrait",
       "https://images.example/previous.jpg",
+      "card",
     );
     expect(response.headers.get("cache-control")).toBe("public, max-age=86400");
     expect(counter).toHaveBeenCalledTimes(1);
@@ -315,6 +316,7 @@ describe("signed catalog image route and actual batched admission", () => {
       "photo",
       undefined,
       undefined,
+      "card",
     );
     expect(mocks.allow.mock.calls[0][0]).toEqual(expectedCatalogBudgets(null));
   });

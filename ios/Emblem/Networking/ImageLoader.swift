@@ -89,7 +89,7 @@ actor ImageLoader {
     private static func specCacheKey(_ spec: ImageSpec, maxPixelSize: CGFloat) -> NSString {
         let loadPixelSize = pixelBucket(
             spec.kind == .object ? 160 : maxPixelSize)
-        return "v2:\(resolutionKey(for: spec)):\(Int(loadPixelSize))" as NSString
+        return "v2:\(resolutionKey(for: spec, hero: isHero(spec, maxPixelSize))):\(Int(loadPixelSize))" as NSString
     }
 
     private static func urlCacheKey(_ url: URL, maxPixelSize: CGFloat) -> NSString {
@@ -122,7 +122,7 @@ actor ImageLoader {
             return [specCacheKey(spec, maxPixelSize: 160)]
         }
         return reusableBuckets(startingAt: maxPixelSize).map {
-            "v2:\(resolutionKey(for: spec)):\(Int($0))" as NSString
+            "v2:\(resolutionKey(for: spec, hero: isHero(spec, maxPixelSize))):\(Int($0))" as NSString
         }
     }
 
@@ -155,18 +155,20 @@ actor ImageLoader {
         }
 
         let usesDisk = !(spec.kind == .object && ObjectLibrary.imageURL(for: spec.query) != nil)
-        let rescueValue = rescue(for: spec)
+        let hero = Self.isHero(spec, maxPixelSize)
+        let resolution = Self.resolutionKey(for: spec, hero: hero)
+        let rescueValue = rescues[resolution]
         let task = Task<LoadedImage?, Never>(priority: priority ?? Task.currentPriority) {
             await self.load(
-                spec, maxPixelSize: loadPixelSize,
+                spec, maxPixelSize: loadPixelSize, hero: hero,
                 diskKey: usesDisk ? key as String : nil, rescue: rescueValue)
         }
         inFlight[key as String] = task
         let loaded = await task.value
         inFlight[key as String] = nil
 
-        if let rescueURL = loaded?.rescueURL { setRescue(rescueURL, for: spec) }
-        if loaded == nil, rescueValue != nil { clearRescue(for: spec) }
+        if let rescueURL = loaded?.rescueURL { setRescue(rescueURL, for: resolution) }
+        if loaded == nil, rescueValue != nil { clearRescue(for: resolution) }
         if let image = loaded?.image {
             cache.setObject(image, forKey: key, cost: Self.cost(of: image))
         }
@@ -215,7 +217,7 @@ actor ImageLoader {
     }
 
     nonisolated private func load(
-        _ spec: ImageSpec, maxPixelSize: CGFloat, diskKey: String?, rescue: String?
+        _ spec: ImageSpec, maxPixelSize: CGFloat, hero: Bool, diskKey: String?, rescue: String?
     ) async -> LoadedImage? {
         if let diskKey, let cached = Self.diskImage(for: diskKey, maxPixelSize: maxPixelSize) {
             return LoadedImage(image: cached, rescueURL: nil, fromDisk: true)
@@ -238,33 +240,33 @@ actor ImageLoader {
         }
         if spec.kind == .object, await objectIconsUnavailable { return nil }
         let identityEpoch = await MainActor.run { ConversationHistory.shared.epoch }
-        var resolved = await sharedResolve(spec, identityEpoch: identityEpoch, excluding: nil)
+        var resolved = await sharedResolve(spec, hero: hero, identityEpoch: identityEpoch, excluding: nil)
         let cannotGenerate = spec.kind == .object ? await objectIconsUnavailable : false
         if resolved == nil, Self.isGenerated(spec), !cannotGenerate {
             try? await Task.sleep(for: .seconds(3))
-            resolved = await sharedResolve(spec, identityEpoch: identityEpoch, excluding: nil)
+            resolved = await sharedResolve(spec, hero: hero, identityEpoch: identityEpoch, excluding: nil)
         }
         guard let url = resolved else { return nil }
         if let image = await fetch(url) {
             return LoadedImage(image: image, rescueURL: url.absoluteString)
         }
         guard let alternate = await sharedResolve(
-            spec, identityEpoch: identityEpoch, excluding: url.absoluteString),
+            spec, hero: hero, identityEpoch: identityEpoch, excluding: url.absoluteString),
               alternate != url,
               let image = await fetch(alternate)
         else { return nil }
         return LoadedImage(image: image, rescueURL: alternate.absoluteString)
     }
 
-    private func sharedResolve(_ spec: ImageSpec, identityEpoch: UUID, excluding: String?) async -> URL? {
-        let key = Self.resolutionKey(for: spec) + "\u{1F}" + (excluding ?? "")
+    private func sharedResolve(_ spec: ImageSpec, hero: Bool, identityEpoch: UUID, excluding: String?) async -> URL? {
+        let key = Self.resolutionKey(for: spec, hero: hero) + "\u{1F}" + (excluding ?? "")
         if let known = resolvedURLs[key] { return known }
         if let existing = resolveInFlight[key] { return await existing.value }
         let session = session
         let task = Task<URL?, Never> {
             await Self.withResolverTimeout(seconds: Self.resolveBudget(for: spec)) {
                 await Self.resolveURL(
-                    spec, session: session, identityEpoch: identityEpoch, excluding: excluding)
+                    spec, hero: hero, session: session, identityEpoch: identityEpoch, excluding: excluding)
             }
         }
         resolveInFlight[key] = task
@@ -289,30 +291,31 @@ actor ImageLoader {
         objectIconsUnavailable = true
     }
 
-    private func rescue(for spec: ImageSpec) -> String? {
-        rescues[Self.resolutionKey(for: spec)]
-    }
-
-    private func setRescue(_ value: String, for spec: ImageSpec) {
-        rescues[Self.resolutionKey(for: spec)] = value
+    private func setRescue(_ value: String, for resolution: String) {
+        rescues[resolution] = value
         UserDefaults.standard.set(rescues, forKey: Self.rescueKey)
         Task { @MainActor in ImageResolutions.shared.record() }
     }
 
-    private func clearRescue(for spec: ImageSpec) {
-        rescues.removeValue(forKey: Self.resolutionKey(for: spec))
+    private func clearRescue(for resolution: String) {
+        rescues.removeValue(forKey: resolution)
         UserDefaults.standard.set(rescues, forKey: Self.rescueKey)
     }
 
-    private static func resolutionKey(for spec: ImageSpec) -> String {
+    private static func isHero(_ spec: ImageSpec, _ maxPixelSize: CGFloat) -> Bool {
+        spec.kind != .object && maxPixelSize >= 800
+    }
+
+    private static func resolutionKey(for spec: ImageSpec, hero: Bool) -> String {
         let query = spec.query
             .split(whereSeparator: \Character.isWhitespace)
             .joined(separator: " ")
             .lowercased()
+        let tier = hero ? ":hero" : ""
         if let aspect = spec.aspect {
-            return "\(spec.kind.rawValue):\(aspect.rawValue):\(query)"
+            return "\(spec.kind.rawValue):\(aspect.rawValue)\(tier):\(query)"
         }
-        return "\(spec.kind.rawValue):\(query)"
+        return "\(spec.kind.rawValue)\(tier):\(query)"
     }
 
     private static func isGenerated(_ spec: ImageSpec) -> Bool {
@@ -445,6 +448,7 @@ actor ImageLoader {
 
     private static func resolveURL(
         _ spec: ImageSpec,
+        hero: Bool,
         session: URLSession,
         identityEpoch: UUID,
         excluding: String? = nil
@@ -460,6 +464,9 @@ actor ImageLoader {
         }
         if let excluding {
             components.queryItems?.append(URLQueryItem(name: "exclude", value: excluding))
+        }
+        if hero {
+            components.queryItems?.append(URLQueryItem(name: "placement", value: "hero"))
         }
         guard let url = components.url else { return nil }
         let data: Data

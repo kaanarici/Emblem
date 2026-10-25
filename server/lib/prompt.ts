@@ -109,7 +109,7 @@ Truth and presentation:
 export const EXPANSION_ARTICLE_GUIDANCE = `
 
 [Subpage request]
-This request drills into one card of a previous response. The client shows the tapped card's image, title, and description as a PLACEHOLDER lead while you compose. Your FIRST element must be one titleBlock that REWRITES that lead: a sharper title, a tighter 1-2 sentence summary, and 2-4 short tags (attributes like "$$ \u00b7 Omakase", "Family friendly"). The client swaps it in over the placeholder. Do NOT emit pageMeta, hero, or a spoken intro. After the lead, emit only new supporting detail about the selected subject, then pageFinish. Keep it concise, specific, and visually useful.`;
+This request drills into one card of a previous response. The client shows the tapped card's image, title, and description as a PLACEHOLDER lead while you compose. Your FIRST element must be one titleBlock that REWRITES that lead: a sharper title, a tighter 1-2 sentence summary, and 2-4 short tags (attributes like "$$ \u00b7 Omakase", "Family friendly"). The client swaps it in over the placeholder. Right after the titleBlock, emit one hero whose image names this exact subject more specifically than a card thumbnail (the venue, dish, artwork or scene plus locality), with image.aspect landscape and hero.aspect wide; the client crossfades to it only when a verified photo is found. Do NOT emit pageMeta or a spoken intro. After the lead, emit only new supporting detail about the selected subject, then pageFinish. Keep it concise, specific, and visually useful.`;
 
 export function expansionEventGuidance(event: {
   title: string;

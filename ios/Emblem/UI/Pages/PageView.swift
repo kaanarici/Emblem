@@ -158,7 +158,9 @@ struct PageView: View {
                             Color.clear
                         }
                     } else {
-                        ExpansionPageCover(card: coverCard(for: source), namespace: expansionNamespace)
+                        ExpansionPageCover(
+                            card: coverCard(for: source), refreshedURL: refreshedCoverURL(for: source),
+                            namespace: expansionNamespace)
                     }
                 }
                 .frame(height: coverHeight)
@@ -206,15 +208,23 @@ struct PageView: View {
 
     private func coverCard(for source: PageExpansionSource) -> CardCarousel.Card {
         var card = source.card
-        guard card.image == nil, card.imageURL == nil else { return card }
-        for block in page.visibleBlocks {
-            if case .hero(let hero) = block {
-                card.image = hero.image
-                card.imageURL = hero.imageURL
-                break
-            }
-        }
+        guard card.image == nil, card.imageURL == nil, let hero = pageHero else { return card }
+        card.image = hero.image
+        card.imageURL = hero.imageURL
         return card
+    }
+
+    private func refreshedCoverURL(for source: PageExpansionSource) -> URL? {
+        guard source.card.image != nil || source.card.imageURL != nil,
+              let url = pageHero?.imageURL, url != source.card.imageURL else { return nil }
+        return URL(string: url)
+    }
+
+    private var pageHero: Hero? {
+        page.visibleBlocks.lazy.compactMap { block -> Hero? in
+            if case .hero(let hero) = block { return hero }
+            return nil
+        }.first
     }
 
     private var streamedLead: TitleBlock? {
@@ -409,14 +419,34 @@ struct PageView: View {
 
 private struct ExpansionPageCover: View {
     let card: CardCarousel.Card
+    let refreshedURL: URL?
     let namespace: Namespace.ID
+    @State private var refreshed: UIImage?
 
     var body: some View {
         CardArtworkView(
             card: card,
             maxPixelSize: 800)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                if let refreshed {
+                    Image(uiImage: refreshed)
+                        .resizable()
+                        .scaledToFill()
+                        .transition(.opacity)
+                }
+            }
             .clipped()
             .accessibilityHidden(true)
+            .task(id: refreshedURL) {
+                guard let refreshedURL else {
+                    refreshed = nil
+                    return
+                }
+                async let loaded = ImageLoader.shared.image(at: refreshedURL, maxPixelSize: 800)
+                try? await Task.sleep(for: .milliseconds(600))
+                guard let image = await loaded, !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.7)) { refreshed = image }
+            }
     }
 }

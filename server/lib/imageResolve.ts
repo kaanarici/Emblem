@@ -1,11 +1,17 @@
 import { isHotelPhotoQuery, resolveHotelPhotoQuery } from "./travel/hotelContent";
-import { logEvent } from "./log";
-import { logError } from "./log";
+import { logError, logEvent } from "./log";
 import { createHash, createHmac } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { isGeneratedStepImageQuery } from "@/lib/generatedStepImages";
-import { fitsAspect, probeImageCandidates } from "@/lib/imageVerify";
+import {
+  isLikelyPhotographURL,
+  isWebImageCandidate,
+  minimumShortEdge,
+  probeImageCandidates,
+  USER_AGENT,
+  type ImagePlacement,
+} from "@/lib/imageVerify";
 import type { Block } from "@/lib/schema";
 import type { ImageAspect } from "@/lib/blockPrimitives";
 
@@ -115,9 +121,14 @@ function l1Set(key: string, value: Promise<string | null>) {
   l1.set(key, value);
 }
 
-export function cacheKey(query: string, kind: string, aspect?: ImageAspect): string {
+export function cacheKey(
+  query: string,
+  kind: string,
+  aspect?: ImageAspect,
+  placement: ImagePlacement = "card",
+): string {
   const normalized = query.trim().toLowerCase().replace(/\s+/g, " ");
-  const namespace = kind === "photo" ? "photo.v2" : kind;
+  const namespace = `${kind}.v3${placement === "hero" ? ".hero" : ""}`;
   return boundedCacheKey(
     aspect ? `${namespace}:${aspect}:${normalized}` : `${namespace}:${normalized}`,
   );
@@ -132,17 +143,18 @@ export function resolveImageCached(
   kind: string,
   aspect?: ImageAspect,
   exclude?: string,
+  placement: ImagePlacement = "card",
 ): Promise<string | null> {
   if (isHotelPhotoQuery(query))
     return kind === "photo" ? resolveHotelPhotoQuery(query) : Promise.resolve(null);
-  const base = cacheKey(query, kind, aspect);
+  const base = cacheKey(query, kind, aspect, placement);
   const key = boundedCacheKey(
     exclude ? `${base}!x:${createHash("sha256").update(exclude).digest("hex")}` : base,
   );
   const hit = l1.get(key);
   if (hit) return hit;
   const pending = withinDeadline(RESOLUTION_DEADLINE_MS, (signal) =>
-    resolveThroughL2(key, query, kind, signal, aspect, exclude),
+    resolveThroughL2(key, query, kind, signal, aspect, exclude, placement),
   );
   l1Set(key, pending);
   void pending.then((url) => {
@@ -157,9 +169,10 @@ export async function cachedImageURL(
   query: string,
   kind: string,
   aspect?: ImageAspect,
+  placement: ImagePlacement = "card",
 ): Promise<string | null> {
   if (isHotelPhotoQuery(query)) return null;
-  const key = cacheKey(query, kind, aspect);
+  const key = cacheKey(query, kind, aspect, placement);
   const hit = l1.get(key);
   if (hit) {
     const settled = await Promise.race([hit, Promise.resolve(PENDING)]);
@@ -169,6 +182,12 @@ export async function cachedImageURL(
   if (!cached) return null;
   l1Set(key, Promise.resolve(cached.url));
   return cached.url;
+}
+
+function artworkPlacement(block: { type?: unknown; presentation?: unknown }): ImagePlacement {
+  return block.type === "hero" || block.presentation === "poster" || block.presentation === "paged"
+    ? "hero"
+    : "card";
 }
 
 const CARD_ARTWORK_DEADLINE_MS = 1_500;
@@ -190,13 +209,16 @@ export function resolvePageArtwork(
         const image = { ...block.image, aspect };
         if (image.kind === "object") return { ...block, image };
         const imageURL = await withHarvestDeadline(
-          resolve(image.query, image.kind, aspect),
+          resolve(image.query, image.kind, aspect, undefined, artworkPlacement(block)),
           HERO_ARTWORK_DEADLINE_MS,
         );
         return imageURL ? { ...block, image, imageURL } : { ...block, image };
       }
       if (block.type === "cardCarousel") {
-        const cards = await Promise.all(block.cards.map((card) => harvestArtwork(card, resolve)));
+        const placement = artworkPlacement(block);
+        const cards = await Promise.all(
+          block.cards.map((card) => harvestArtwork(card, resolve, undefined, placement)),
+        );
         return { ...block, cards };
       }
       if (block.type === "stepCarousel") {
@@ -238,13 +260,18 @@ async function harvestArtwork<
     image?: { query: string; kind: string; aspect?: ImageAspect };
     imageURL?: string;
   },
->(entity: T, resolve: typeof resolveImageCached, defaultAspect?: ImageAspect): Promise<T> {
+>(
+  entity: T,
+  resolve: typeof resolveImageCached,
+  defaultAspect?: ImageAspect,
+  placement: ImagePlacement = "card",
+): Promise<T> {
   const image = entity.image;
   if (!image || entity.imageURL || image.kind === "object" || image.kind === "generated") {
     return entity;
   }
   const imageURL = await withHarvestDeadline(
-    resolve(image.query, image.kind, image.aspect ?? defaultAspect),
+    resolve(image.query, image.kind, image.aspect ?? defaultAspect, undefined, placement),
     CARD_ARTWORK_DEADLINE_MS,
   );
   return imageURL ? { ...entity, imageURL } : entity;
@@ -273,15 +300,21 @@ function withHarvestDeadline(
 }
 
 const warming = new Set<string>();
-export function warmImage(query: string, kind: string, aspect?: ImageAspect): void {
+export function warmImage(
+  query: string,
+  kind: string,
+  aspect?: ImageAspect,
+  placement: ImagePlacement = "card",
+): void {
   if (kind === "object" || kind === "generated" || isGeneratedStepImageQuery(query)) return;
-  const key = cacheKey(query, kind, aspect);
+  const key = cacheKey(query, kind, aspect, placement);
   if (l1.has(key) || warming.has(key)) return;
   warming.add(key);
   void withinDeadline(WARM_DEADLINE_MS, async (signal) => {
     const cached = await bestEffort(boundedSignal(signal, L2_LOOKUP_MS), () => l2Get(key));
     if (cached || signal.aborted) return cached;
-    const resolved = await resolveStructured(query, kind, signal, aspect);
+    const minEdge = minimumShortEdge(kind, placement);
+    const resolved = await resolveStructured(query, kind, signal, minEdge, aspect);
     if (resolved) l2Put(key, resolved);
     return resolved;
   })
@@ -296,11 +329,12 @@ export function warmImage(query: string, kind: string, aspect?: ImageAspect): vo
 
 export function imageSpecsIn(
   node: unknown,
-): { query: string; kind: string; aspect?: ImageAspect }[] {
-  const out: { query: string; kind: string; aspect?: ImageAspect }[] = [];
-  const walk = (n: unknown): void => {
+): { query: string; kind: string; aspect?: ImageAspect; placement: ImagePlacement }[] {
+  const out: ReturnType<typeof imageSpecsIn> = [];
+  const walk = (n: unknown, placement: ImagePlacement = "card"): void => {
     if (!n || typeof n !== "object") return;
     const o = n as Record<string, unknown>;
+    const inner = placement === "hero" ? placement : artworkPlacement(o);
     if (
       typeof o.query === "string" &&
       typeof o.kind === "string" &&
@@ -310,12 +344,12 @@ export function imageSpecsIn(
         o.aspect === "square" || o.aspect === "portrait" || o.aspect === "landscape"
           ? o.aspect
           : undefined;
-      out.push({ query: o.query, kind: o.kind, aspect });
+      out.push({ query: o.query, kind: o.kind, aspect, placement });
       return;
     }
     for (const v of Object.values(o)) {
-      if (Array.isArray(v)) v.forEach(walk);
-      else if (v && typeof v === "object") walk(v);
+      if (Array.isArray(v)) v.forEach((item) => walk(item, inner));
+      else if (v && typeof v === "object") walk(v, inner);
     }
   };
   walk(node);
@@ -327,8 +361,9 @@ async function resolveThroughL2(
   query: string,
   kind: string,
   signal: AbortSignal,
-  aspect?: ImageAspect,
-  exclude?: string,
+  aspect: ImageAspect | undefined,
+  exclude: string | undefined,
+  placement: ImagePlacement,
 ): Promise<string | null> {
   const cached = await bestEffort(boundedSignal(signal, L2_LOOKUP_MS), () => l2Get(key));
   if (cached && cached.url !== exclude) {
@@ -336,7 +371,8 @@ async function resolveThroughL2(
     return cached.url;
   }
   if (signal.aborted) return null;
-  const resolved = await resolveImage(query, kind, signal, aspect, exclude);
+  const minEdge = minimumShortEdge(kind, placement);
+  const resolved = await resolveImage(query, kind, signal, minEdge, aspect, exclude);
   if (resolved) l2Put(key, resolved);
   return resolved?.url ?? null;
 }
@@ -345,26 +381,34 @@ async function resolveImage(
   query: string,
   kind: string,
   signal: AbortSignal,
+  minEdge: number,
   aspect?: ImageAspect,
   exclude?: string,
 ): Promise<Resolved | null> {
-  const structured = await resolveStructured(query, kind, signal, aspect);
+  const structured = await resolveStructured(query, kind, signal, minEdge, aspect);
   if (structured && structured.url !== exclude) {
     logEvent("info", "image resolved", { kind, source: structured.source });
     return structured;
   }
-  return fallbackPhoto(query, aspect, signal, kind, exclude);
+  return fallbackPhoto(query, aspect, signal, kind, minEdge, exclude);
 }
 
 async function resolveStructured(
   query: string,
   kind: string,
   signal: AbortSignal,
+  minEdge: number,
   aspect?: ImageAspect,
 ): Promise<Resolved | null> {
+  const verify = async (pending: Promise<Resolved | null>): Promise<Resolved | null> => {
+    const art = await pending.catch(() => null);
+    if (!art) return null;
+    const verdict = await probeImageCandidates([art.url], { aspect, minEdge, signal });
+    return verdict.verified && verdict.url ? { url: verdict.url, source: art.source } : null;
+  };
   const entityQuery =
     kind === "poster" || kind === "still" || kind === "logo" ? mediaEntityQuery(query) : query;
-  const photo = structuredPhoto(entityQuery, aspect, signal).catch(() => null);
+  const photo = structuredPhoto(entityQuery, signal, verify);
   if (kind === "poster" || kind === "still" || kind === "logo") {
     const canUseITunes =
       !aspect || aspect === "square" || (kind === "poster" && aspect === "portrait");
@@ -377,7 +421,7 @@ async function resolveStructured(
       kind === "poster" && aspect !== "landscape"
         ? tvMazePoster(entityQuery, signal)
         : Promise.resolve(null),
-    ].map((pending) => pending.catch(() => null));
+    ].map(verify);
     for (const pending of media) {
       const art = await pending;
       if (art) return art;
@@ -405,16 +449,13 @@ function mediaEntityQuery(query: string): string {
 
 async function structuredPhoto(
   query: string,
-  aspect: ImageAspect | undefined,
   signal: AbortSignal,
+  verify: (pending: Promise<Resolved | null>) => Promise<Resolved | null>,
 ): Promise<Resolved | null> {
-  const exact = wikipediaExact(query, aspect, signal).catch(() => null);
-  const p18 = wikidataP18(query, signal).catch(() => null);
-  const lead = await exact;
-  if (lead) return { url: lead, source: "wikipedia" };
-  const image = await p18;
-  if (image) return { url: image, source: "wikidata" };
-  return null;
+  const found = (source: string) => (url: string | null) => (url ? { url, source } : null);
+  const exact = verify(wikipediaLead(query, signal).then(found("wikipedia")));
+  const p18 = verify(wikidataP18(query, signal).then(found("wikidata")));
+  return (await exact) ?? (await p18);
 }
 
 async function fallbackPhoto(
@@ -422,19 +463,21 @@ async function fallbackPhoto(
   aspect: ImageAspect | undefined,
   signal: AbortSignal,
   kind: string,
+  minEdge: number,
   exclude?: string,
 ): Promise<Resolved | null> {
   const [fuzzy, wikidata, exa] = await Promise.all([
-    wikipediaFuzzy(query, aspect, signal),
+    wikipediaLead(query, signal, true),
     aspect ? wikidataP18(query, signal) : null,
     exaImages(query, kind, signal),
   ]);
-  const candidates = [...fuzzy, ...(wikidata ? [wikidata] : []), ...exa].filter(
-    (candidate) => candidate !== exclude,
+  const candidates = [fuzzy, wikidata, ...exa].filter(
+    (candidate): candidate is string => candidate != null && candidate !== exclude,
   );
   const { url, verified, tried } = await probeImageCandidates(candidates, {
     aspect,
     photo: kind === "photo",
+    minEdge,
     signal,
   });
   logEvent("info", "image resolved by web search", {
@@ -447,70 +490,33 @@ async function fallbackPhoto(
   return url ? { url, source: "web-verified" } : null;
 }
 
-const WIKI_HEADERS = { "User-Agent": "EmblemApp/1.0 (https://github.com/kaanarici/emblem)" };
+const WIKI_HEADERS = { "User-Agent": USER_AGENT };
 
 async function wikiJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
   return providerJson<T>(url, { headers: WIKI_HEADERS }, signal, STRUCTURED_FETCH_MS);
 }
 
-type PageImages = {
-  query?: {
-    pages?: Record<string, { thumbnail?: { source?: string; width?: number; height?: number } }>;
-  };
-};
+type PageImages = { query?: { pages?: Record<string, { thumbnail?: { source?: string } }> } };
 
-function firstThumbnail(data: PageImages | null, aspect?: ImageAspect): string | null {
+function firstThumbnail(data: PageImages | null): string | null {
   for (const p of Object.values(data?.query?.pages ?? {})) {
     const src = p.thumbnail?.source;
-    if (
-      src?.startsWith("https") &&
-      isLikelyPhotographURL(src) &&
-      fitsAspect(p.thumbnail?.width ?? 0, p.thumbnail?.height ?? 0, aspect)
-    ) {
-      return src;
-    }
+    if (src?.startsWith("https") && isLikelyPhotographURL(src)) return src;
   }
   return null;
 }
 
-const NON_PHOTO_ASSET =
-  /(?:^|[/_. -])(flag|coat[ _-]?of[ _-]?arms|logo|seal|emblem|icon|symbol|diagram|wordmark|map)(?:[/_. ?&-]|$)|\.svg(?:\.png)?(?:\?|$)/i;
-
-function isLikelyPhotographURL(url: string): boolean {
-  try {
-    return !NON_PHOTO_ASSET.test(decodeURIComponent(url));
-  } catch {
-    return !NON_PHOTO_ASSET.test(url);
-  }
-}
-
 const WIKI_BASE =
-  "https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&pithumbsize=800&redirects=1";
+  "https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&pithumbsize=1280&redirects=1";
 
-async function wikipediaExact(
+async function wikipediaLead(
   query: string,
-  aspect: ImageAspect | undefined,
   signal: AbortSignal,
+  search = false,
 ): Promise<string | null> {
-  return firstThumbnail(
-    await wikiJson<PageImages>(`${WIKI_BASE}&titles=${encodeURIComponent(query)}`, signal),
-    aspect,
-  );
-}
-
-async function wikipediaFuzzy(
-  query: string,
-  aspect: ImageAspect | undefined,
-  signal: AbortSignal,
-): Promise<string[]> {
-  const url = firstThumbnail(
-    await wikiJson<PageImages>(
-      `${WIKI_BASE}&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=1`,
-      signal,
-    ),
-    aspect,
-  );
-  return url ? [url] : [];
+  const title = encodeURIComponent(query);
+  const lookup = search ? `generator=search&gsrsearch=${title}&gsrlimit=1` : `titles=${title}`;
+  return firstThumbnail(await wikiJson<PageImages>(`${WIKI_BASE}&${lookup}`, signal));
 }
 
 async function wikidataP18(query: string, parentSignal: AbortSignal): Promise<string | null> {
@@ -537,7 +543,7 @@ async function wikidataP18(query: string, parentSignal: AbortSignal): Promise<st
   );
   const file = claims?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
   if (typeof file !== "string") return null;
-  const url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}?width=800`;
+  const url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}?width=1280`;
   return isLikelyPhotographURL(url) ? url : null;
 }
 
@@ -586,26 +592,7 @@ async function exaImagesOnce(query: string, kind: string, signal: AbortSignal): 
   for (let col = 0; col < width; col++) {
     for (const c of perResult) if (c[col]) out.push(c[col]);
   }
-  return out.filter(
-    (u) =>
-      isUsableImage(u) &&
-      (kind === "logo" || !LOGO_URL.test(u)) &&
-      (kind !== "photo" || isLikelyPhotographURL(u)),
-  );
-}
-
-const IMAGE_EXT = /\.(jpe?g|png|webp|avif|gif|bmp)(\?|$)/i;
-const DYNAMIC_IMAGE = /\/is\/image\/|[?&](fmt|format)=(png|jpe?g)(?:[-&]|$)/i;
-const IMAGE_CDN =
-  /^https:\/\/(?:images|plus)\.unsplash\.com\/|^https:\/\/assets\.lummi\.ai\/assets\//i;
-const JUNK_IMAGE = /\.svg(\?|$)|favicon|sprite|(?:^|[^a-z])icons?(?:[^a-z]|$)|1x1/i;
-const LOGO_URL = /(?:^|[^a-z])(?:logos?|lockup|wordmark|brandmark)(?:[^a-z]|$)/i;
-function isUsableImage(u: string): boolean {
-  return (
-    u.startsWith("https") &&
-    (IMAGE_EXT.test(u) || DYNAMIC_IMAGE.test(u) || IMAGE_CDN.test(u)) &&
-    !JUNK_IMAGE.test(u)
-  );
+  return out.filter((u) => isWebImageCandidate(u, kind));
 }
 
 async function tmdb(

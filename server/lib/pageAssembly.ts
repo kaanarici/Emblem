@@ -272,7 +272,10 @@ export function createPageAssembly({
         aspect: "wide",
       });
     }
-    if (persist.calendarEvent) finalPage = withCalendarEventIcon(finalPage, persist.calendarEvent);
+    if (persist.calendarEvent) {
+      const withoutCover = finalPage.filter((block) => block.type !== "hero");
+      finalPage = withCalendarEventIcon(withoutCover, persist.calendarEvent);
+    }
     const hotel = hotelSelection ? hotelCatalogs.get(hotelSelection.hotelId) : undefined;
     if (
       hotel &&
