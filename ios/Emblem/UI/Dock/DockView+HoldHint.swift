@@ -8,7 +8,7 @@ extension DockView {
             .font: UIFont.systemFont(ofSize: 15, weight: .semibold),
             .kern: ShimmerText.tracking,
         ]).width
-        return ceil(text) + 16 + 8 + 2 * 24
+        return ceil(text) + 2 * 26
     }()
 
     var holdHintEligible: Bool {

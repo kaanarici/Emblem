@@ -53,6 +53,7 @@ struct DockView: View {
 
     @State var holdStartedAt: Date?
     @State var lockPull: CGFloat = 0
+    @State var lockReleasing = false
     @State var holdHint = false
     @State var holdHintDelay: Double = 8
     @GestureState var voicePressActive = false
@@ -155,7 +156,7 @@ struct DockView: View {
                             }
                         }
                         .offset(x: reduceMotion ? 0 : (rightControlParked ? Self.sideParkDistance : 0))
-                        .opacity(reduceMotion && rightControlParked ? 0 : 1)
+                        .opacity(rightControlParked ? 0 : 1)
                         .allowsHitTesting(!rightControlParked && !store.attachmentsExpanded && sidebarProgress == 0)
                         .opacity(1 - sidebarProgress)
                         .accessibilityHidden(sidebarProgress > 0)

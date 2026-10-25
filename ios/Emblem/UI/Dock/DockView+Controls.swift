@@ -137,51 +137,24 @@ extension DockView {
         .accessibilityHidden(accessibilitySuppressed)
     }
 
+    var voiceSendReady: Bool { isEditingRecording || !speech.overlayText.isEmpty }
+
     var voiceSendButton: some View {
-        let ready = isEditingRecording || !speech.overlayText.isEmpty
-        let swap: AnyTransition = reduceMotion
-            ? .opacity
-            : .modifier(active: SlotSwap(progress: 0), identity: SlotSwap(progress: 1))
-        return Button {
-            if isEditingRecording { dispatchEditor(.send) }
-            else if ready { sendVoiceNow() }
-            else { typeInstead() }
+        Button {
+            if isEditingRecording { dispatchEditor(.send) } else { sendVoiceNow() }
         } label: {
-            ZStack {
-                AnodizedSurface(shape: Circle())
-                    .opacity(ready ? 1 : 0)
-                if ready {
-                    ChromeGlyph(symbol: .arrowUp, size: 28)
-                        .foregroundStyle(accent.glyph)
-                        .transition(swap)
-                } else {
-                    KeyboardGlyph()
-                        .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
-                        .transition(swap)
-                }
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-            .animation(reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.3), value: ready)
+            ChromeGlyph(symbol: .arrowUp, size: 28)
+                .foregroundStyle(Color.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(isEditingRecording && !editorControlsReady)
         .glassEffect(.regular.interactive(), in: .circle)
         .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
-        .accessibilityLabel(ready ? "Send recording" : "Type instead")
-        .accessibilityIdentifier(ready ? "voice-send" : "voice-type-instead")
+        .accessibilityLabel("Send recording")
+        .accessibilityIdentifier("voice-send")
         .accessibilityHidden(accessibilitySuppressed)
-    }
-
-    private func typeInstead() {
-        voiceStartTask?.cancel()
-        voiceStartTask = nil
-        holdStartedAt = nil
-        Task { _ = await speech.finish() }
-        speech.prepareForFreshSegment()
-        speech.draft = ""
-        speech.phase = .idle
-        store.dockState = .keyboard
     }
 
     func stopVoiceSegment() {

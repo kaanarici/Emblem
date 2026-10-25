@@ -77,3 +77,10 @@ static float2 glassDrift(float2 position, float2 size, float2 origin, float time
     return half4(half3(listeningWash(generationWash(position, size, time, cycleOffset, tint, listeningStyle(style)), time)
                        + washDither(position)), 1.0);
 }
+
+[[ stitchable ]] half4 listeningSnapshot(float2 position, half4 color, float2 size,
+                                         float time, float cycleOffset, float3 tint, float style) {
+    float3 wash = listeningWash(generationWash(position, size, time, cycleOffset, tint, listeningStyle(style)), time)
+                + washDither(position);
+    return half4(color.rgb * half3(wash), color.a);
+}

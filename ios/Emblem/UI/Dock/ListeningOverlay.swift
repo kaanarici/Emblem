@@ -504,6 +504,7 @@ private struct RecordingEditorMount<Content: View>: View {
 struct ListeningTint: View {
     let listening: Bool
     let isHolding: () -> Bool
+    @Environment(SpeechService.self) private var speech
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accent) private var accent
     @Environment(\.listeningStyle) private var style
@@ -513,17 +514,24 @@ struct ListeningTint: View {
     var body: some View {
         GeometryReader { proxy in
             TimelineView(.animation(minimumInterval: nil, paused: level == 0 || reduceMotion)) { timeline in
-                Rectangle()
-                    .colorEffect(ShaderLibrary.listeningTint(
-                        .float2(proxy.size),
-                        .float(Float(timeline.date.timeIntervalSince(ListeningTintClock.start))),
-                        .float(Float(ListeningTintClock.offset)),
-                        accent.washArgument,
-                        .float(style.shaderIndex)))
+                let time = Float(timeline.date.timeIntervalSince(ListeningTintClock.start))
+                if let snapshot = speech.listeningSourceBackdrop {
+                    Image(uiImage: snapshot)
+                        .resizable()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .colorEffect(ShaderLibrary.listeningSnapshot(
+                            .float2(proxy.size), .float(time), .float(Float(ListeningTintClock.offset)),
+                            accent.washArgument, .float(style.shaderIndex)))
+                } else {
+                    Rectangle()
+                        .colorEffect(ShaderLibrary.listeningTint(
+                            .float2(proxy.size), .float(time), .float(Float(ListeningTintClock.offset)),
+                            accent.washArgument, .float(style.shaderIndex)))
+                        .blendMode(.multiply)
+                }
             }
         }
         .ignoresSafeArea()
-        .blendMode(.multiply)
         .opacity(scheme == .dark ? 0 : level)
         .allowsHitTesting(false)
         .task {
@@ -531,6 +539,7 @@ struct ListeningTint: View {
             let size = Shader.Argument.float2(CGSize(width: 1, height: 1))
             let tint = Shader.Argument.float3(1, 1, 1)
             try? await ShaderLibrary.listeningTint(size, f, f, tint, f).compile(as: .colorEffect)
+            try? await ShaderLibrary.listeningSnapshot(size, f, f, tint, f).compile(as: .colorEffect)
             let circle = Shader.Argument.float3(0, 0, 1)
             for shader in [ShaderLibrary.waveLens, ShaderLibrary.waveMeniscus, ShaderLibrary.domeLens, ShaderLibrary.domeRim] {
                 try? await shader(size, circle, f, f, f, f, f, f, f, f, f, tint).compile(as: .layerEffect)

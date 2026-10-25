@@ -22,6 +22,8 @@ final class RecordingJourneyTests: JourneyTestCase {
         XCTAssertTrue(transcript.waitForExistence(timeout: 4))
         XCTAssertEqual(transcript.label, first)
         XCTAssertTrue(element("voice-lock-status").exists, "Sliding up did not lock the recording")
+        XCTAssertTrue(element("voice-send").waitForExistence(timeout: 2),
+                      "The locked recording's keyboard button did not turn into send once words appeared")
 
         tap(mic)
         let editor = app.textViews["voice-transcript-editor"]

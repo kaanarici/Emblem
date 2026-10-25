@@ -83,6 +83,14 @@ extension DockView {
         .accessibilityValue(sidebarProgress > 0 ? "" : String(describing: speech.phase))
         .accessibilityHidden(accessibilitySuppressed)
         .overlay(alignment: .top) { lockBadge }
+        .onChange(of: speech.phase) { old, new in
+            guard old == .locked, new == .editing, !reduceMotion else { return }
+            lockReleasing = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(380))
+                lockReleasing = false
+            }
+        }
         .allowsHitTesting(isEditingRecording ? editorControlsReady
             : (!store.isAwaitingFirstGenerationContent || thinking))
         .highPriorityGesture(

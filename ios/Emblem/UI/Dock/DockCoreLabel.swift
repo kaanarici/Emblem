@@ -170,7 +170,7 @@ struct DockCoreLabel: View {
         ZStack {
             displayedLabel
                 .id(displayedContent.isStatus)
-                .transition(.opacity)
+                .transition(Self.labelSwap(reduceMotion))
         }
         .opacity(visible ? 1 : 0)
         .blur(radius: reduceMotion || visible ? 0 : 3.2)
@@ -218,33 +218,48 @@ struct DockCoreLabel: View {
                 .accessibilityLabel("Stop response")
                 .accessibilityHint("Stops generating this response")
                 .accessibilityIdentifier("generation-stop")
-                ShimmerText(text, active: visible, size: statusFontSize)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .opacity(statusTextVisible ? 1 : 0)
-                    .blur(radius: reduceMotion || statusTextVisible ? 0 : 2.4)
-                    .accessibilityIdentifier("generation-status")
+                ZStack(alignment: .leading) {
+                    ShimmerText(text, active: visible, size: statusFontSize)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .id(text)
+                        .transition(Self.labelSwap(reduceMotion))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(statusTextVisible ? 1 : 0)
+                .blur(radius: reduceMotion || statusTextVisible ? 0 : 2.4)
+                .accessibilityIdentifier("generation-status")
             }
             .padding(.leading, DockStatusMetrics.controlEdgePadding)
             .padding(.trailing, DockStatusMetrics.textEdgePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
         case .microphone(let locked, let hint):
-            HStack(spacing: 8) {
-                Image(systemName: locked ? "square.fill" : "mic.fill")
-                    .font(.system(size: locked ? 19 : 16, weight: .medium))
-                    .foregroundStyle(locked && accent.isNeutral ? Theme.record : accent.glyph)
-                    .accessibilityIdentifier("dock-microphone")
+            ZStack {
                 if hint {
                     ShimmerText(DockView.holdHintText, active: visible, size: 15)
                         .fixedSize()
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .offset(x: -8))
-                                .animation(.easeOut(duration: 0.3).delay(0.1)),
-                            removal: .opacity.animation(.easeOut(duration: 0.1))))
+                        .transition(Self.labelSwap(reduceMotion))
+                } else {
+                    Image(systemName: locked ? "square.fill" : "mic.fill")
+                        .font(.system(size: locked ? 19 : 16, weight: .medium))
+                        .foregroundStyle(locked && accent.isNeutral ? Theme.record : accent.glyph)
+                        .accessibilityIdentifier("dock-microphone")
+                        .transition(Self.labelSwap(reduceMotion))
                 }
             }
         }
+    }
+
+    static func labelSwap(_ reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .modifier(active: LabelBlur(radius: 4), identity: LabelBlur(radius: 0)))
+                .combined(with: .offset(y: 5))
+                .animation(.smooth(duration: 0.3).delay(0.1)),
+            removal: .opacity.combined(with: .modifier(active: LabelBlur(radius: 4), identity: LabelBlur(radius: 0)))
+                .combined(with: .offset(y: -5))
+                .animation(.easeOut(duration: 0.12)))
     }
 
     private func swap(to content: DockCoreContent) {
@@ -352,6 +367,11 @@ struct DockCoreLabel: View {
             if displaysStatus { displaysStatus = false }
         }
     }
+}
+
+private struct LabelBlur: ViewModifier {
+    let radius: CGFloat
+    func body(content: Content) -> some View { content.blur(radius: radius) }
 }
 
 private struct DockStopButtonStyle: ButtonStyle {

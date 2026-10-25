@@ -49,7 +49,7 @@ extension DockView {
         if isEditingRecording { return dockControlsHidden }
         return dockControlsHidden ||
             store.isAwaitingFirstGenerationContent ||
-            (store.dockState == .listening && speech.phase != .locked)
+            (store.dockState == .listening && (speech.phase != .locked || !voiceSendReady))
     }
 
     static let sideParkDistance = controlSize + 44
@@ -84,7 +84,7 @@ extension DockView {
     }
 
     var dockMorph: Animation {
-        reduceMotion ? .easeOut(duration: 0.15) : Self.pillMotion
+        reduceMotion ? .easeOut(duration: 0.15) : (displaysStatus ? Self.pillMotion : .smooth(duration: 0.44))
     }
 
     var dockLayoutKey: DockLayoutKey {

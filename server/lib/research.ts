@@ -333,7 +333,7 @@ export async function research({
       }),
       execute: async ({ query }, options) => {
         const id = (options as { toolCallId?: string } | undefined)?.toolCallId ?? "web-search";
-        onStatus?.("Searching the web…");
+        onStatus?.("Searching…");
         onActivity?.({
           type: "activity",
           id,

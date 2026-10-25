@@ -139,7 +139,7 @@ public final class OnDeviceModel {
             let ledger = AppleWebSearch.Ledger()
             let search = AppleWebSearch(
                 endpoint: AppConfig.baseURL.appending(path: "api/tools"), identityEpoch: identityEpoch, ledger: ledger,
-                onSearch: { onStatus("Searching the web…") })
+                onSearch: { onStatus("Searching…") })
             let history = context.suffix(3)
             let floor = min(1, history.count)
             let attempts = (searchAllowed ? (floor...history.count).reversed().map { ($0, true) } : [])

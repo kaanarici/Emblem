@@ -15,7 +15,7 @@ extension DockView {
 
     @ViewBuilder
     var lockBadge: some View {
-        if speech.phase == .held || speech.phase == .locked {
+        if speech.phase == .held || speech.phase == .locked || lockReleasing {
             let locked = speech.phase == .locked
             let pull = locked ? 1 : min(1, lockPull / Self.lockDistance)
             Image(systemName: locked ? "lock.fill" : "lock.open")
@@ -37,8 +37,9 @@ extension DockView {
                         insertion: .scale(scale: 0.6).combined(with: .opacity)
                             .combined(with: .offset(y: 10))
                             .animation(.spring(duration: 0.34, bounce: 0.18)),
-                        removal: .scale(scale: 0.8).combined(with: .opacity)
-                            .animation(.easeOut(duration: 0.14))))
+                        removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity)
+                            .combined(with: .offset(y: 18))
+                            .animation(.smooth(duration: 0.26))))
                 .animation(.interactiveSpring(duration: 0.14, extraBounce: 0), value: lockPull)
                 .animation(.spring(duration: 0.36, bounce: 0.3), value: speech.phase)
         }
