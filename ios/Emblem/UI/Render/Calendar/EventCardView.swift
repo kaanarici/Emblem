@@ -152,7 +152,7 @@ struct EventCardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .modifier(ExpandsIntoSubpage(card: card(for: event), blockID: block.id))
+                    .modifier(ExpandsIntoSubpage(card: card(for: event), blockID: block.id, elevation: .flat(18)))
                 }
             }
         }

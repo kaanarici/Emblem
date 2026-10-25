@@ -124,16 +124,18 @@ struct ItemGridView: View {
 
     private func tile(_ item: ItemGrid.Item, at index: Int, centered: Bool) -> some View {
         tileBody(item, at: index, centered: centered)
-            .modifier(ExpandsIntoSubpage(
-                card: CardCarousel.Card(
-                    image: item.icon?.image,
-                    imageURL: nil,
-                    icon: item.icon,
-                    title: item.title,
-                    caption: item.caption,
-                    prompt: "Tell me more about \(item.title)" +
-                        "\(item.caption.map { " (\($0))" } ?? "")."),
-                blockID: block.id))
+            .modifier(ExpandsIntoSubpage(card: card(for: item), blockID: block.id))
+    }
+
+    private func card(for item: ItemGrid.Item) -> CardCarousel.Card {
+        CardCarousel.Card(
+            image: item.icon?.image,
+            imageURL: nil,
+            icon: item.icon,
+            title: item.title,
+            caption: item.caption,
+            prompt: "Tell me more about \(item.title)" +
+                "\(item.caption.map { " (\($0))" } ?? "").")
     }
 
     private func tileBody(_ item: ItemGrid.Item, at index: Int, centered: Bool) -> some View {
@@ -161,19 +163,13 @@ struct ItemGridView: View {
                     }
                 }
                 .clipShape(shape)
-                .modifier(PhotoTileShadow(enabled: isPhoto))
+                .modifier(ExpansionZoomSource(card: card(for: item), blockID: block.id,
+                                              elevation: isPhoto ? .media(tileRadius) : .flat(tileRadius)))
                 .contentShape(shape)
             itemLabel(item, centered: centered)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-    }
-
-    private struct PhotoTileShadow: ViewModifier {
-        let enabled: Bool
-        func body(content: Content) -> some View {
-            if enabled { content.modifier(MediaArtworkShadow()) } else { content }
-        }
     }
 
     private func itemLabel(_ item: ItemGrid.Item, centered: Bool) -> some View {

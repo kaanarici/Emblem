@@ -26,6 +26,38 @@ final class PageJourneyTests: JourneyTestCase {
         XCTAssertEqual(card.frame.minY, resting.minY, accuracy: 2, "Closing the drill-in moved the page")
     }
 
+    func testDraggingADrillInDownShrinksItBackIntoItsCard() throws {
+        let server = try StubServer(replies: ["browse", "detail"])
+        launch(server)
+        send("Which shows return in 2026?")
+
+        let card = app.staticTexts["Will Trent"]
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        let resting = card.frame
+        let page = element("expansion-page")
+        let grip = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+
+        tap(card)
+        XCTAssertTrue(page.waitForExistence(timeout: 3))
+        XCTAssertTrue(text(containing: "grief soaked therapy dramedy").waitForExistence(timeout: 15))
+        grip.press(forDuration: 0.05, thenDragTo: grip.withOffset(CGVector(dx: 0, dy: 40)),
+                   withVelocity: 120, thenHoldForDuration: 0.3)
+        XCTAssertFalse(page.waitForNonExistence(timeout: 2), "A short pull closed the drill-in instead of springing back")
+
+        for (speed, sideways) in [(XCUIGestureVelocity(400), 0.0), (XCUIGestureVelocity(1400), 90.0)] {
+            if !page.exists {
+                tap(card)
+                XCTAssertTrue(page.waitForExistence(timeout: 3))
+            }
+            Thread.sleep(forTimeInterval: 1)
+            grip.press(forDuration: 0.05, thenDragTo: grip.withOffset(CGVector(dx: sideways, dy: 320)),
+                       withVelocity: speed, thenHoldForDuration: 0)
+            XCTAssertTrue(page.waitForNonExistence(timeout: 3), "Dragging down at \(speed.rawValue) pt/s did not close the drill-in")
+            XCTAssertTrue(card.waitForExistence(timeout: 3))
+            XCTAssertEqual(card.frame.minY, resting.minY, accuracy: 2, "The drill-in did not return to its card")
+        }
+    }
+
     func testComparisonExpandsAndClosesInPlace() throws {
         let server = try StubServer(replies: ["butter"])
         launch(server)

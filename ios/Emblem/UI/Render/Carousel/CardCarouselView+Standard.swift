@@ -75,7 +75,8 @@ extension CardCarouselView {
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: large ? 20 : 12, style: .continuous))
-                    .modifier(MediaArtworkShadow())
+                    .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace,
+                                             elevation: .media(large ? 20 : 12)))
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(card.title)
@@ -116,7 +117,6 @@ extension CardCarouselView {
         }
         .blockStoreMutationControl()
         .buttonStyle(.pressable)
-        .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace))
         .modifier(CardMenu(card: card))
     }
 }

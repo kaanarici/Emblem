@@ -38,6 +38,7 @@ struct SpotListView: View {
                             .scaledToFill()
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .modifier(ExpansionZoomSource(card: card(for: spot), blockID: block.id, elevation: .flat(22)))
 
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(spot.name)

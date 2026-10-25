@@ -93,7 +93,8 @@ extension CardCarouselView {
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .modifier(MediaArtworkShadow())
+                    .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace,
+                                             elevation: .media(20)))
 
                 VStack(alignment: alignment, spacing: 0) {
                     Text(card.title)
@@ -137,7 +138,6 @@ extension CardCarouselView {
         }.onEnded { _ in
             DispatchQueue.main.async { listCardPanned = false }
         }, including: fullWidth ? .all : .subviews)
-        .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace))
         .modifier(CardMenu(card: card))
         .overlay(alignment: .topTrailing) {
             if bookmark {

@@ -98,8 +98,9 @@ struct SavedPagesView: View {
                     RemoteImage(spec: cover.image, url: cover.imageURL.flatMap(URL.init(string:)), maxPixelSize: 700)
                         .frame(width: width, height: width / coverRatio(cover.aspect))
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
-                        .modifier(SavedCoverSource(id: transitionID(for: saved), namespace: expansionNamespace))
+                        .modifier(CardZoomSource(
+                            id: "saved-\(transitionID(for: saved))", namespace: expansionNamespace,
+                            elevation: CardElevation(corner: 22, ambient: (0.1, 8, 4), contact: (0, 0, 0))))
                 }
                 VStack(alignment: .leading, spacing: 5) {
                     Text(saved.title)
@@ -167,19 +168,6 @@ struct SavedPagesView: View {
         case .square: 1
         case .landscape: 4 / 3
         case .portrait: 2 / 3
-        }
-    }
-}
-
-private struct SavedCoverSource: ViewModifier {
-    let id: String
-    let namespace: Namespace.ID?
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if let namespace {
-            content.matchedTransitionSource(id: "saved-\(id)", in: namespace)
-        } else {
-            content
         }
     }
 }

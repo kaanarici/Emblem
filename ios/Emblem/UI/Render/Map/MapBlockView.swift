@@ -74,7 +74,7 @@ struct MapBlockView: View {
             id: renderedPage.map { MapPresentation.transitionID(parent: $0, blockID: block.id) },
             namespace: namespace,
             elevation: thin ? CardElevation(
-                corner: cornerRadius, ambient: (0.1, 14, 5), contact: (0, 0, 0)) : nil))
+                corner: cornerRadius, ambient: (0.1, 14, 5), contact: (0, 0, 0)) : .flat(cornerRadius)))
         .padding(.horizontal, 28)
         .task(id: streamedPlaces.map(\.searchQuery)) {
             await model.load(streamedPlaces, thin: thin)

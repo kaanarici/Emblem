@@ -43,10 +43,9 @@ extension CardCarouselView {
                 managedCard(card)
             }
         } else {
-            cardBody(card, width: railCardWidth, captionLines: 3) {
+            cardBody(card, width: railCardWidth, captionLines: 3, corner: 16) {
                 cardImage(card)
                     .frame(width: railCardWidth, height: tileHeight(card))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }
@@ -62,11 +61,10 @@ extension CardCarouselView {
         ) {
             ForEach(keyedCards) { keyed in
                 let card = keyed.card
-                cardBody(card, width: nil, captionLines: 3) {
+                cardBody(card, width: nil, captionLines: 3, corner: 16) {
                     Color.clear
                         .aspectRatio(1.38, contentMode: .fit)
                         .overlay { cardImage(card) }
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .id(keyed.id)
             }
@@ -253,10 +251,9 @@ extension CardCarouselView {
     }
 
     func singleCard(_ card: CardCarousel.Card) -> some View {
-        cardBody(card, width: nil, captionLines: nil) {
+        cardBody(card, width: nil, captionLines: nil, corner: 24) {
             cardImage(card)
                 .aspectRatio(3 / 4, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .padding(.horizontal, Theme.contentMargin)
     }
@@ -266,6 +263,7 @@ extension CardCarouselView {
         _ card: CardCarousel.Card,
         width: CGFloat?,
         captionLines: Int?,
+        corner: CGFloat,
         @ViewBuilder image: () -> some View
     ) -> some View {
         Button {
@@ -274,12 +272,15 @@ extension CardCarouselView {
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 image()
+                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
                     .overlay(alignment: .topLeading) {
                         if let tag = card.tag {
                             ArtworkQualitativeBadge(text: tag)
                                 .padding(ArtworkQualitativeBadge.inset(cardRadius: 20))
                         }
                     }
+                    .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace,
+                                             elevation: .flat(corner)))
                 Text(card.title)
                     .font(Theme.cardTitle())
                     .foregroundStyle(Theme.ink)
@@ -310,9 +311,6 @@ extension CardCarouselView {
         }
         .blockStoreMutationControl()
         .buttonStyle(.pressable)
-        .modifier(CardZoomSource(
-            id: sourceTransitionID(for: card),
-            namespace: expansionNamespace))
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .modifier(CardMenu(card: card))
     }

@@ -99,7 +99,8 @@ extension CardCarouselView {
         }
         .blockStoreMutationControl()
         .buttonStyle(.pressable)
-        .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace))
+        .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace,
+                                 elevation: .media(28), drawsRestingShadow: false))
         .modifier(CardMenu(card: card))
         .modifier(MediaArtworkShadow())
         .overlay(alignment: .topTrailing) {

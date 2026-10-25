@@ -67,7 +67,8 @@ extension CardCarouselView {
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .modifier(MediaArtworkShadow())
+                    .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace,
+                                             elevation: .media(20)))
 
                 if let caption = card.caption {
                     Text(caption)
@@ -93,7 +94,6 @@ extension CardCarouselView {
         }
         .blockStoreMutationControl()
         .buttonStyle(.pressable)
-        .modifier(CardZoomSource(id: sourceTransitionID(for: card), namespace: expansionNamespace))
         .modifier(CardMenu(card: card))
         .overlay(alignment: .topTrailing) {
             CarouselBookmarkButton(card: card, blockID: block.id, presentation: .poster)
