@@ -68,6 +68,37 @@ final class NavigationJourneyTests: JourneyTestCase {
         XCTAssertEqual(home.frame.minY, homeTop, accuracy: 1, "Home scrolled away with the chats")
     }
 
+    func testSidebarSearchFindsAnOlderChatAndCancelRestoresTheList() throws {
+        let history = (1...30).map { StubServer.Conversation(key: "chat-\($0)", title: "Chat \($0)", fixture: "natural-evidence") }
+            + [.init(key: "lisbon", title: "Weekend in Lisbon", fixture: "natural-evidence")]
+        let server = try StubServer(history: history, listPageSize: 12)
+        launch(server)
+        XCTAssertTrue(element("home-greeting").waitForExistence(timeout: 10))
+        openSidebar()
+        XCTAssertTrue(app.buttons["sidebar-conversation-chat-1"].waitForExistence(timeout: 8))
+        let menu = app.buttons["Open menu"].firstMatch
+        XCTAssertEqual(app.buttons["sidebar-search"].frame.midY, menu.frame.midY, accuracy: 1, "The header is off the menu row")
+
+        tap(app.buttons["sidebar-search"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "Search did not focus the field")
+        app.typeText("lisbon")
+        let older = app.buttons["sidebar-conversation-lisbon"]
+        XCTAssertTrue(older.waitForExistence(timeout: 8), "Search never paged to the older chat")
+        XCTAssertFalse(app.buttons["sidebar-conversation-chat-1"].exists, "Search did not filter the list")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label == 'Home'")).firstMatch.exists)
+
+        tap(app.buttons["sidebar-search"])
+        XCTAssertTrue(app.buttons["sidebar-conversation-chat-1"].waitForExistence(timeout: 5), "Cancel did not restore the list")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Home'")).firstMatch.exists)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "The keyboard stayed after cancel")
+
+        tap(app.buttons["sidebar-search"])
+        app.typeText("lisbon")
+        tap(older)
+        XCTAssertTrue(text(containing: "Your launch review begins at 2:00 PM").waitForExistence(timeout: 10))
+        XCTAssertTrue(server.prompts.isEmpty, "Opening a search result generated a new page")
+    }
+
     func testLongConversationGoesBackToItsFirstPage() throws {
         let server = try StubServer(history: [.init(key: "long", title: "Long chat", fixture: "natural-evidence", pages: 7)])
         launch(server)

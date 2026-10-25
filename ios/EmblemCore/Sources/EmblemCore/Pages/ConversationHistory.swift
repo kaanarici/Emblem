@@ -154,6 +154,7 @@ public final class ConversationHistory {
 
     public var items: [ConversationSummary] { items(.active) }
     public var loadState: LoadState { active.state }
+    public var canLoadMore: Bool { active.cursor != nil }
 
     public func items(_ scope: Scope) -> [ConversationSummary] {
         let shown = active.keys.union(archived.keys)

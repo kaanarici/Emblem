@@ -216,6 +216,7 @@ struct RootView: View {
                 topInset: windowTopInset,
                 bottomInset: windowBottomInset,
                 isVisible: sidebarProgress > 0,
+                isOpen: showSidebar,
                 isHomeSelected: primaryOriginPageIDs == nil && primaryDestination == nil && isHomePage,
                 selectedConversationKey: primaryOriginPageIDs == nil && primaryDestination == nil ? store.currentConversationKey : nil,
                 onHome: {
@@ -524,5 +525,6 @@ struct RootView: View {
             }
             .background(Theme.sidebarBackground, ignoresSafeAreaEdges: .all)
         }
+        .ignoresSafeArea(.keyboard, edges: sidebarProgress > 0 ? .bottom : [])
     }
 }

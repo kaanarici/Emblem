@@ -81,6 +81,8 @@ struct DockView: View {
     static let controlSize: CGFloat = 56
     static let capsuleInset: CGFloat = 4
     static let innerControlSize = controlSize - capsuleInset * 2
+    static let sideInset: CGFloat = 18
+    static let newPillWidth = newPageWidth + capsuleInset * 2
     private static let composerRadius: CGFloat = 22
 
     var body: some View {
@@ -171,7 +173,7 @@ struct DockView: View {
                             }
                         }
                 }
-                .padding(.horizontal, speech.phase == .idle ? 18 : 20)
+                .padding(.horizontal, speech.phase == .idle ? Self.sideInset : 20)
             }
             .background {
                 Color.clear

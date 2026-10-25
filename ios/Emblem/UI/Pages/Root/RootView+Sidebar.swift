@@ -42,7 +42,7 @@ extension RootView {
 
     var isHomePage: Bool { store.currentPage?.isHome ?? true }
 
-    var sidebarWidth: CGFloat { viewportWidth * 8 / 11 }
+    var sidebarWidth: CGFloat { viewportWidth / 2 + DockView.newPillWidth / 2 + DockView.sideInset }
 
     var sidebarOffset: CGFloat {
         if showSidebar {

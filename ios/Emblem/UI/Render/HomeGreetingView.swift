@@ -12,7 +12,7 @@ struct HomeGreetingView: View {
         var text = body_
         for run in text.runs {
             let strong = run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
-            text[run.range].font = .system(size: 24, weight: strong ? .semibold : .regular)
+            text[run.range].font = Theme.greeting(strong: strong)
         }
         return text
     }
@@ -30,7 +30,7 @@ struct HomeGreetingView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(styledGreeting)
                 .lineSpacing(0.4)
-                .tracking(0.2)
+                .tracking(Theme.greetingTracking)
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)

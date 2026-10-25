@@ -8,10 +8,14 @@ struct HomeSidebar: View {
     @State private var history = ConversationHistory.shared
     @State private var deleteTarget: HistoryTarget?
     @State private var deleteFailed = false
+    @State private var searching = false
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
 
     let topInset: CGFloat
     let bottomInset: CGFloat
     let isVisible: Bool
+    let isOpen: Bool
     let isHomeSelected: Bool
     let selectedConversationKey: String?
     let onHome: () -> Void
@@ -23,24 +27,28 @@ struct HomeSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.top, topInset)
             VStack(alignment: .leading, spacing: 0) {
-                sidebarRow("Home", symbol: "house", selected: isHomeSelected, action: onHome)
-                sidebarRow("Saves", symbol: "bookmark", selected: isSavesSelected, action: onSaves)
-                if let onCalendar {
-                    sidebarRow("Calendar", symbol: "calendar", selected: isCalendarSelected, action: onCalendar)
-                }
-                Divider().padding(.top, 14)
-                if !recentConversations.isEmpty || history.loadState != .loaded {
-                    Text("Chats")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 18)
-                    .accessibilityAddTraits(.isHeader)
+                if !searching {
+                    sidebarRow("Home", symbol: "house", selected: isHomeSelected, action: onHome)
+                    sidebarRow("Saves", symbol: "bookmark", selected: isSavesSelected, action: onSaves)
+                    if let onCalendar {
+                        sidebarRow("Calendar", symbol: "calendar", selected: isCalendarSelected, action: onCalendar)
+                    }
+                    Divider().padding(.top, 14)
+                    if !recentConversations.isEmpty || history.loadState != .loaded {
+                        Text("Chats")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 18)
+                        .accessibilityAddTraits(.isHeader)
+                    }
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.top, topInset)
+            .padding(.top, 12)
             chats
         }
         .foregroundStyle(Theme.ink)
@@ -48,6 +56,15 @@ struct HomeSidebar: View {
         .background(Theme.sidebarBackground)
         .task(id: isVisible) {
             if isVisible { await history.load() }
+            else { endSearch() }
+        }
+        .onChange(of: isOpen) { _, open in
+            if !open { searchFocused = false }
+        }
+        .task(id: SearchPaging(query: searchText, matches: recentConversations.count, state: history.loadState)) {
+            guard !searchText.isEmpty, recentConversations.count < Self.searchPageTarget,
+                  history.loadState == .loaded, history.canLoadMore else { return }
+            await history.loadMore()
         }
         .onChange(of: history.epoch) { _, _ in
             deleteTarget = nil
@@ -103,10 +120,13 @@ struct HomeSidebar: View {
                 }
                 .id(history.epoch)
                 .animation(reduceMotion ? nil : .spring(duration: 0.32), value: recentConversations.map(\.key))
-                if recentConversations.isEmpty, history.loadState == .loading {
+                if history.loadState == .loading, recentConversations.isEmpty || !searchText.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.top, 24)
+                } else if !searchText.isEmpty, recentConversations.isEmpty, history.loadState == .loaded,
+                          !history.canLoadMore {
+                    noMatchesRow
                 }
                 if history.loadState == .failed {
                     failedRow
@@ -119,8 +139,9 @@ struct HomeSidebar: View {
             }
         }
         .contentMargins(.top, Self.edgeFade, for: .scrollContent)
-        .contentMargins(.bottom, bottomInset + DockView.controlSize + Self.edgeFade * 2, for: .scrollContent)
+        .contentMargins(.bottom, dockClearance + Self.edgeFade * 2, for: .scrollContent)
         .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.immediately)
         .mask {
             VStack(spacing: 0) {
                 LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
@@ -129,15 +150,136 @@ struct HomeSidebar: View {
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                     .frame(height: Self.edgeFade * 2)
                 Color.clear
-                    .frame(height: bottomInset + DockView.controlSize)
+                    .frame(height: dockClearance)
             }
         }
     }
 
     private static let edgeFade: CGFloat = 14
 
+    private var dockClearance: CGFloat {
+        guard searchFocused, KeyboardPresence.shared.isVisible else { return bottomInset + DockView.controlSize }
+        return KeyboardPresence.shared.lastHeight
+    }
+
     private var recentConversations: [ConversationSummary] {
-        history.items
+        guard !searchText.isEmpty else { return history.items }
+        return history.items.filter { $0.title.localizedStandardContains(searchText) }
+    }
+
+    private var searchText: String {
+        searching ? query.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+    }
+
+    private struct SearchPaging: Equatable {
+        let query: String
+        let matches: Int
+        let state: ConversationHistory.LoadState
+    }
+
+    private static let searchPageTarget = 20
+
+    private var searchMotion: Animation {
+        reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.28)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .leading) {
+                if searching {
+                    searchField
+                        .transition(.opacity)
+                } else {
+                    Text("Emblem")
+                        .font(Theme.greeting(strong: true))
+                        .tracking(Theme.greetingTracking)
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                        .accessibilityAddTraits(.isHeader)
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                if searching { endSearch() } else { beginSearch() }
+            } label: {
+                ZStack {
+                    GlyphImage(symbol: "magnifyingglass", size: 24)
+                        .opacity(searching ? 0 : 1)
+                    CloseGlyph()
+                        .opacity(searching ? 1 : 0)
+                }
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel(searching ? "Cancel search" : "Search chats")
+            .accessibilityIdentifier("sidebar-search")
+        }
+        .frame(height: 44)
+        .padding(.leading, searching ? DockView.sideInset : 20)
+        .padding(.trailing, DockView.sideInset)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            GlyphImage(symbol: "magnifyingglass", size: 18)
+                .foregroundStyle(Theme.inkSecondary)
+            TextField("Search chats", text: $query)
+                .font(.system(size: 16))
+                .foregroundStyle(Theme.ink)
+                .focused($searchFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+                .onSubmit { searchFocused = false }
+                .onKeyPress(.escape) {
+                    endSearch()
+                    return .handled
+                }
+                .accessibilityIdentifier("sidebar-search-field")
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .frame(width: 28, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, query.isEmpty ? 14 : 6)
+        .frame(height: 44)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private func beginSearch() {
+        withAnimation(searchMotion) { searching = true }
+        searchFocused = true
+    }
+
+    private func endSearch() {
+        searchFocused = false
+        guard searching || !query.isEmpty else { return }
+        withAnimation(searchMotion) {
+            searching = false
+            query = ""
+        }
+    }
+
+    private var noMatchesRow: some View {
+        Text("No chats match \u{201C}\(searchText)\u{201D}")
+            .font(.system(size: 15))
+            .foregroundStyle(Theme.inkSecondary)
+            .padding(.horizontal, 12)
+            .padding(.top, 16)
+            .accessibilityIdentifier("sidebar-search-empty")
     }
 
     private func conversationRow(_ item: ConversationSummary) -> some View {
@@ -161,12 +303,20 @@ struct HomeSidebar: View {
                 .frame(width: 56, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 4) {
-                    let pin = Text(item.isPinned ? "  \(Image(systemName: "pin.fill"))" : "")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.inkSecondary)
-                    Text("\(item.title)\(pin)")
-                        .font(.system(size: 16))
-                        .lineLimit(2)
+                    HStack(spacing: 6) {
+                        Text(item.title)
+                            .font(.system(size: 16))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if item.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.inkSecondary)
+                                .fixedSize()
+                                .layoutPriority(1)
+                                .accessibilityLabel("Pinned")
+                        }
+                    }
                     Text(item.date, format: .relative(presentation: .named, unitsStyle: .abbreviated))
                         .font(.system(size: 14))
                         .foregroundStyle(Theme.inkSecondary)

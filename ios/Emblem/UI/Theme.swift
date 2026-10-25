@@ -77,6 +77,8 @@ enum Theme {
         })
     }
 
+    static func greeting(strong: Bool = false) -> Font { .system(size: 24, weight: strong ? .semibold : .regular) }
+    static let greetingTracking: CGFloat = 0.2
     static func sectionTitle() -> Font { .system(size: 24, weight: .bold) }
     static func intro() -> Font { .system(size: 22, weight: .regular) }
     static func body() -> Font { .system(size: 17, weight: .regular) }
