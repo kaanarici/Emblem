@@ -170,14 +170,11 @@ final class SpeechService {
             return
         }
         #endif
-        let supported = await SpeechTranscriber.supportedLocales
-        func supportedMatch(_ target: Locale) -> Locale? {
-            supported.first { $0.identifier(.bcp47) == target.identifier(.bcp47) }
-                ?? supported.first { $0.language.languageCode == target.language.languageCode }
+        var chosen: Locale?
+        for identifier in Locale.preferredLanguages + [Locale.current.identifier, "en-US"] where chosen == nil {
+            chosen = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier))
         }
-        guard let chosen = supportedMatch(.current) ?? supportedMatch(Locale(identifier: "en-US")) else {
-            return
-        }
+        guard let chosen else { return }
         locale = chosen
 
         let probe = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
@@ -221,13 +218,13 @@ final class SpeechService {
             let transcriber = SpeechTranscriber(
                 locale: locale,
                 transcriptionOptions: preset.transcriptionOptions,
-                reportingOptions: preset.reportingOptions.union([.volatileResults, .fastResults]),
+                reportingOptions: preset.reportingOptions.subtracting([.fastResults]).union([.volatileResults]),
                 attributeOptions: preset.attributeOptions)
             self.transcriber = transcriber
 
             try await Task.detached(priority: .userInitiated) {
                 let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playAndRecord, mode: .measurement, options: .duckOthers)
+                try session.setCategory(.playAndRecord, mode: .spokenAudio, options: .duckOthers)
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
             }.value
 
