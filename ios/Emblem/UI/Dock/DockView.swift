@@ -39,6 +39,7 @@ struct DockView: View {
     var bottomInset: CGFloat = 34
     var accessibilitySuppressed = false
     var onNewPage: () -> Void = {}
+    var onSettings: () -> Void = {}
     var editingControls: RecordingEditorControls? = nil
     var editingControlOwner: UUID? = nil
 
@@ -139,15 +140,15 @@ struct DockView: View {
                         }
                         .offset(x: reduceMotion ? 0 : (rightControlParked ? Self.sideParkDistance : 0))
                         .opacity(reduceMotion && rightControlParked ? 0 : 1)
-                        .allowsHitTesting(!rightControlParked && !store.attachmentsExpanded)
+                        .allowsHitTesting(!rightControlParked && !store.attachmentsExpanded && sidebarProgress == 0)
+                        .opacity(1 - sidebarProgress)
+                        .accessibilityHidden(sidebarProgress > 0)
                         .opacity(dockControlsHidden ? 0 : 1)
                         .animation(.linear(duration: 0), value: dockControlsHidden)
                         .animation(sideParkMotion, value: rightControlParked)
                         .transition(sideControlTransition(x: 14))
                     }
-                    .opacity(1 - sidebarProgress)
-                    .allowsHitTesting(sidebarProgress == 0)
-                    .accessibilityHidden(accessibilitySuppressed || sidebarProgress > 0)
+                    .accessibilityHidden(accessibilitySuppressed)
                     .zIndex(store.attachmentsExpanded ? 2 : 0)
                     .onChange(of: speech.phase, initial: true) { syncEditorSlots() }
 

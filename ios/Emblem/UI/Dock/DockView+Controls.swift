@@ -32,7 +32,9 @@ extension DockView {
             .frame(width: 44, height: 44)
             .overlay(alignment: .bottomLeading) {
                 ZStack(alignment: .bottomLeading) {
-                    Button { store.attachmentsExpanded = true } label: { plusLabel }
+                    Button {
+                        if sidebarOpen { onSettings() } else { store.attachmentsExpanded = true }
+                    } label: { plusLabel }
                         .buttonStyle(.plain)
                         .opacity(store.attachmentsExpanded ? 0 : 1)
                         .animation(
@@ -41,8 +43,8 @@ extension DockView {
                             value: store.attachmentsExpanded)
                         .allowsHitTesting(!store.attachmentsExpanded)
                         .accessibilityHidden(store.attachmentsExpanded)
-                        .accessibilityLabel("Add attachments")
-                        .accessibilityIdentifier("dock-attachments")
+                        .accessibilityLabel(sidebarOpen ? "Settings" : "Add attachments")
+                        .accessibilityIdentifier(sidebarOpen ? "sidebar-settings" : "dock-attachments")
                     if store.attachmentsExpanded {
                         AttachmentMenuPanel(
                             onPhotos: { openAttachmentPicker { showPhotoPicker = true } },
@@ -67,11 +69,21 @@ extension DockView {
         .accessibilityHidden(accessibilitySuppressed)
     }
 
+    var sidebarOpen: Bool { sidebarProgress > 0.5 }
+
     private var plusLabel: some View {
-        ChromeGlyph(symbol: .add, size: 28)
-            .foregroundStyle(Color.primary)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
+        ZStack {
+            ChromeGlyph(symbol: .add, size: 28)
+                .opacity(1 - sidebarProgress)
+                .rotationEffect(.degrees(90 * sidebarProgress))
+            Image(systemName: "gearshape")
+                .font(.system(size: 20, weight: .regular))
+                .opacity(sidebarProgress)
+                .rotationEffect(.degrees(-90 * (1 - sidebarProgress)))
+        }
+        .foregroundStyle(Color.primary)
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
     }
 
     private func openAttachmentPicker(_ action: @escaping () -> Void) {

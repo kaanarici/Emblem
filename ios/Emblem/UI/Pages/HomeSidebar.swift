@@ -17,9 +17,7 @@ struct HomeSidebar: View {
     let onHome: () -> Void
     let onConversation: (String) -> Void
     let onSaves: () -> Void
-    let onSettings: () -> Void
     var isSavesSelected = false
-    var isSettingsSelected = false
     var isCalendarSelected = false
     var onCalendar: (() -> Void)? = nil
 
@@ -44,12 +42,6 @@ struct HomeSidebar: View {
             .padding(.horizontal, 8)
             .padding(.top, topInset)
             chats
-        }
-        .overlay(alignment: .bottomLeading) {
-            SidebarSettingsButton(selected: isSettingsSelected, isVisible: isVisible, onSettings: onSettings)
-                .frame(height: DockView.controlSize)
-                .padding(.leading, 18)
-                .padding(.bottom, bottomInset)
         }
         .foregroundStyle(Theme.ink)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -291,35 +283,3 @@ private struct SidebarHomeGlyph: View {
     }
 }
 
-private struct SidebarSettingsButton: View {
-    @Environment(\.accent) private var accent
-
-    let selected: Bool
-    let isVisible: Bool
-    let onSettings: () -> Void
-
-    var body: some View {
-        Button(action: onSettings) { gear }
-            .buttonStyle(.plain)
-            .accessibilityRepresentation {
-                if isVisible {
-                    Button(action: onSettings) { gear }
-                        .accessibilityLabel("Settings")
-                        .accessibilityHint("Opens Settings and connections")
-                        .accessibilityAddTraits(selected ? .isSelected : [])
-                        .accessibilityIdentifier("sidebar-settings")
-                }
-            }
-            .glassEffect(.regular.interactive(), in: .circle)
-            .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
-            .frame(width: 44, height: 44)
-    }
-
-    private var gear: some View {
-        Image(systemName: selected ? "gearshape.fill" : "gearshape")
-            .font(.system(size: 20, weight: .regular))
-            .foregroundStyle(selected ? accent.tint(Color.primary) : Color.primary)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-    }
-}

@@ -44,6 +44,8 @@ extension RootView {
                 primaryRoot = nil
                 store.popToHome()
                 closeSidebar()
+            }, onSettings: {
+                openFromSidebar(.settings)
             }, editingControls: recordingEditorControls,
                editingControlOwner: recordingEditorOwner)
         }

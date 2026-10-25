@@ -240,11 +240,7 @@ struct RootView: View {
                 onSaves: {
                     openFromSidebar(.saves)
                 },
-                onSettings: {
-                    openFromSidebar(.settings)
-                },
                 isSavesSelected: savesIsTopmost,
-                isSettingsSelected: settingsIsTopmost,
                 isCalendarSelected: calendarIsTopmost,
                 onCalendar: openCalendar)
                 .frame(width: sidebarWidth)
