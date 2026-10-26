@@ -352,6 +352,7 @@ struct RootView: View {
             .shadow(color: .black.opacity(0.12 * sidebarProgress), radius: 22, x: -3)
             .sensoryFeedback(EmblemHaptic.send, trigger: store.isGenerating) { old, new in !old && new }
             .sensoryFeedback(EmblemHaptic.failed, trigger: store.failureCount)
+            .sensoryFeedback(EmblemHaptic.sidebar, trigger: showSidebar)
             .gesture(SidebarOpeningPanGesture(
                 isEnabled: !mapIsTopmost && primaryDestination == nil && !(settingsIsTopmost && settingsSubpagePushed) && (primaryIsTopmost || (primaryRoot == nil && isHomePage)) && !showSidebar && store.dockState == .idle && speech.phase == .idle,
                 onChanged: updateSidebarOpening,

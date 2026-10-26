@@ -8,6 +8,7 @@ enum EmblemHaptic {
     static let listenStart = SensoryFeedback.impact(weight: .medium)
     static let listenLock = SensoryFeedback.impact(weight: .light)
     static let listenStop = SensoryFeedback.impact(flexibility: .soft, intensity: 0.7)
+    static let sidebar = SensoryFeedback.impact(weight: .light, intensity: 0.6)
     static let send = SensoryFeedback.impact(weight: .light)
     static let saved = SensoryFeedback.success
     static let removed = SensoryFeedback.impact(weight: .light)
