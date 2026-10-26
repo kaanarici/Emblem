@@ -64,21 +64,20 @@ private struct CalendarStripThumb: View {
 private struct CalendarStripLabels: View {
     let primary: String
     let secondary: String
-    let focused: Bool
     let today: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 1) {
             Text(primary)
-                .font(.system(size: 17, weight: focused || today ? .semibold : .regular))
+                .font(.system(size: 17, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(secondary)
-                .font(.system(size: 13, weight: focused ? .semibold : .regular))
-                .foregroundStyle(focused ? CalendarMetrics.red(colorScheme) : Theme.inkSecondary)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(today ? CalendarMetrics.red(colorScheme) : Theme.inkSecondary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -110,24 +109,26 @@ struct CalendarDayStrip: View {
         let index = CalendarStripIndex(calendar: selection.calendar, zone: selection.zone)
         let selected = index.day(selection.selectedDate)
         let position = pager.dragging ? CGFloat(index.day(anchor)) + pager.page(reach: reach) : CGFloat(selected)
-        let focused = Int(position.rounded())
-        let week = Int((Double(focused) / 7).rounded(.down))
+        let week = Int((Double(Int(position.rounded())) / 7).rounded(.down))
+        let slot = position - CGFloat(week * 7)
         let today = index.day(CalendarBrowserDay(date: CalendarAgendaFeed.shared.now, timeZone: selection.zone))
         GeometryReader { proxy in
             let cell = (proxy.size.width - 2 * Theme.pageMargin) / 7
             ZStack(alignment: .topLeading) {
                 CalendarStripThumb()
                     .frame(width: cell - 4, height: Self.height)
-                    .offset(x: position * cell + 2)
-                    .calendarSettle(position, while: pager.dragging, reduceMotion: reduceMotion)
-                ForEach((week - 1) * 7 ..< (week + 2) * 7, id: \.self) { day in
-                    dayCell(index, day: day, focused: day == focused, today: day == today)
-                        .frame(width: cell, height: Self.height)
-                        .offset(x: CGFloat(day) * cell)
+                    .offset(x: Theme.pageMargin + slot * cell + 2)
+                    .calendarSettle(slot, while: pager.dragging, reduceMotion: reduceMotion)
+                ZStack(alignment: .topLeading) {
+                    ForEach((week - 1) * 7 ..< (week + 2) * 7, id: \.self) { day in
+                        dayCell(index, day: day, today: day == today)
+                            .frame(width: cell, height: Self.height)
+                            .offset(x: CGFloat(day) * cell)
+                    }
                 }
+                .offset(x: Theme.pageMargin - CGFloat(week * 7) * cell + drag)
+                .calendarSettle(week, while: false, reduceMotion: reduceMotion)
             }
-            .offset(x: Theme.pageMargin - CGFloat(week * 7) * cell + drag)
-            .calendarSettle(week, while: false, reduceMotion: reduceMotion)
             .frame(width: proxy.size.width, height: Self.height, alignment: .topLeading)
             .contentShape(Rectangle())
             .highPriorityGesture(swipe(stride: 7 * cell))
@@ -158,7 +159,7 @@ struct CalendarDayStrip: View {
             }
     }
 
-    private func dayCell(_ index: CalendarStripIndex, day position: Int, focused: Bool, today: Bool) -> some View {
+    private func dayCell(_ index: CalendarStripIndex, day position: Int, today: Bool) -> some View {
         let date = index.date(day: position)
         let day = CalendarBrowserDay(date: date, timeZone: selection.zone)
         let weekday = index.calendar.shortStandaloneWeekdaySymbols[index.calendar.component(.weekday, from: date) - 1]
@@ -171,7 +172,7 @@ struct CalendarDayStrip: View {
                 }
             }
         } label: {
-            CalendarStripLabels(primary: String(day.day), secondary: weekday, focused: focused, today: today)
+            CalendarStripLabels(primary: String(day.day), secondary: weekday, today: today)
         }
         .buttonStyle(.pressable)
         .accessibilityLabel(selection.text(day, format: "EEEE, MMMM d, yyyy"))
@@ -205,8 +206,7 @@ struct CalendarPeriodStrip: View {
                     .frame(width: cell - 8, height: CalendarDayStrip.height)
                     .offset(x: cell + 4)
                 ForEach(center - 2 ... center + 2, id: \.self) { period in
-                    periodCell(index, period: period, relative: period - selected, focused: period == center,
-                               current: period == current)
+                    periodCell(index, period: period, relative: period - selected, current: period == current)
                         .frame(width: cell, height: CalendarDayStrip.height)
                         .offset(x: (CGFloat(period) - position + 1) * cell + drag)
                 }
@@ -239,8 +239,7 @@ struct CalendarPeriodStrip: View {
             }
     }
 
-    private func periodCell(_ index: CalendarStripIndex, period: Int, relative: Int, focused: Bool,
-                            current: Bool) -> some View {
+    private func periodCell(_ index: CalendarStripIndex, period: Int, relative: Int, current: Bool) -> some View {
         let calendar = selection.calendar
         let monthly = selection.mode == .monthly
         let start = CalendarBrowserDay(date: index.start(period: period, monthly: monthly), timeZone: selection.zone)
@@ -255,7 +254,7 @@ struct CalendarPeriodStrip: View {
             CalendarStripLabels(
                 primary: monthly ? selection.text(start, format: "MMMM") : selection.text(start, format: "MMM d") + "–" + tail,
                 secondary: monthly ? String(start.year) : "Week \(calendar.component(.weekOfYear, from: week))",
-                focused: focused, today: current)
+                today: current)
         }
         .buttonStyle(.pressable)
         .accessibilityLabel(monthly ? selection.text(start, format: "MMMM yyyy")
