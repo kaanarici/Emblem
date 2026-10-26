@@ -165,7 +165,7 @@ private struct CalendarDraftEditor: View {
             .navigationTitle(feed.draft?.kind == .todo ? "To-do" : "Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button(role: .confirm) { dismiss() } }
             }
         }
     }
