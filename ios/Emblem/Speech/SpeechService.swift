@@ -148,7 +148,7 @@ final class SpeechService {
     private var locale = Locale(identifier: "en-US")
     private let audioEngine = AVAudioEngine()
     private var analyzer: SpeechAnalyzer?
-    private var transcriber: SpeechTranscriber?
+    private var transcriber: DictationTranscriber?
     private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
     private var analyzerFormat: AVAudioFormat?
@@ -172,12 +172,12 @@ final class SpeechService {
         #endif
         var chosen: Locale?
         for identifier in Locale.preferredLanguages + [Locale.current.identifier, "en-US"] where chosen == nil {
-            chosen = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier))
+            chosen = await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier))
         }
         guard let chosen else { return }
         locale = chosen
 
-        let probe = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        let probe = Self.makeTranscriber(locale: locale)
         do {
             if let request = try await AssetInventory.assetInstallationRequest(supporting: [probe]) {
                 try await request.downloadAndInstall()
@@ -214,12 +214,7 @@ final class SpeechService {
         prepareForFreshSegment()
 
         do {
-            let preset = SpeechTranscriber.Preset.progressiveTranscription
-            let transcriber = SpeechTranscriber(
-                locale: locale,
-                transcriptionOptions: preset.transcriptionOptions,
-                reportingOptions: preset.reportingOptions.subtracting([.fastResults]).union([.volatileResults]),
-                attributeOptions: preset.attributeOptions)
+            let transcriber = Self.makeTranscriber(locale: locale)
             self.transcriber = transcriber
 
             try await Task.detached(priority: .userInitiated) {
@@ -229,9 +224,12 @@ final class SpeechService {
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
             }.value
 
-            let analyzer = SpeechAnalyzer(modules: [transcriber])
+            let analyzer = SpeechAnalyzer(
+                modules: [transcriber],
+                options: .init(priority: .userInitiated, modelRetention: .processLifetime))
             self.analyzer = analyzer
             analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+            try await analyzer.prepareToAnalyze(in: analyzerFormat)
             guard !Task.isCancelled else {
                 await teardown()
                 return
@@ -267,7 +265,7 @@ final class SpeechService {
             let tapBuilder = self.inputBuilder
             let format = analyzerFormat
             let levelBox = self.levelBox
-            audioEngine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { @Sendable buffer, _ in
+            audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { @Sendable buffer, _ in
                 if let data = buffer.floatChannelData?[0] {
                     let n = Int(buffer.frameLength)
                     if n > 0 {
@@ -291,6 +289,15 @@ final class SpeechService {
         } catch {
             await teardown()
         }
+    }
+
+    private static func makeTranscriber(locale: Locale) -> DictationTranscriber {
+        DictationTranscriber(
+            locale: locale,
+            contentHints: [.shortForm],
+            transcriptionOptions: [.punctuation],
+            reportingOptions: [.volatileResults, .frequentFinalization],
+            attributeOptions: [])
     }
 
     func finish() async -> String {
