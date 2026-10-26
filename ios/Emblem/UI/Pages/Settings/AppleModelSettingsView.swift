@@ -74,7 +74,7 @@ struct AppleModelSettingsView: View {
             .padding(.bottom, 60)
         }
         .background(Theme.background)
-        .navigationTitle("Apple Intelligence")
+        .navigationTitle("Runs on")
         .navigationBarTitleDisplayMode(.inline)
     }
 

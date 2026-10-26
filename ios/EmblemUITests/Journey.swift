@@ -87,6 +87,7 @@ final class StubServer: @unchecked Sendable {
         let title: String
         let fixture: String
         var pinned = false
+        var archived = false
         var pages = 1
         var artwork = false
     }
@@ -98,10 +99,12 @@ final class StubServer: @unchecked Sendable {
     private let listPageSize: Int
     private let google: [GoogleEvent]
     private var received: [String] = []
+    private var changes: [(action: String, keys: [String])] = []
     private(set) var url = ""
 
     var prompts: [String] { lock.withLock { received } }
     var pinnedKeys: [String] { lock.withLock { history.filter(\.pinned).map(\.key) } }
+    var conversationChanges: [(action: String, keys: [String])] { lock.withLock { changes } }
 
     init(replies: [String] = ["natural-evidence"], history: [Conversation] = [], listPageSize: Int = 50,
          google: [GoogleEvent] = []) throws {
@@ -188,11 +191,16 @@ final class StubServer: @unchecked Sendable {
             }
             return ("application/json", #"{"google":{"state":"connected","accounts":[{"email":"sam@example.com","state":"ok"}]},"events":[\#(rows.joined(separator: ","))]}"#)
         case "/api/conversation":
-            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: String] ?? [:]
+            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+            let action = json["action"] as? String ?? ""
+            let keys = json["conversationKeys"] as? [String] ?? [json["conversationKey"] as? String].compactMap(\.self)
             lock.withLock {
-                guard let index = history.firstIndex(where: { $0.key == json["conversationKey"] }) else { return }
-                if json["action"] == "pin" { history[index].pinned = true }
-                if json["action"] == "unpin" { history[index].pinned = false }
+                changes.append((action, keys))
+                if action == "delete" { history.removeAll { keys.contains($0.key) } }
+                for index in history.indices where keys.contains(history[index].key) {
+                    if action == "pin" || action == "unpin" { history[index].pinned = action == "pin" }
+                    if action == "archive" || action == "unarchive" { history[index].archived = action == "archive" }
+                }
             }
             return ("application/json", "{}")
         case "/api/conversations":
@@ -200,9 +208,10 @@ final class StubServer: @unchecked Sendable {
             let row = { (index: Int, item: Conversation) in
                 let pin = item.pinned ? #","pinnedAt":\#(now)"# : ""
                 let art = item.artwork ? #","image":{"query":"\#(item.title)","kind":"photo"},"imageURL":"\#(self.url)/art/\#(item.key).png""# : ""
-                return #"{"key":"\#(item.key)","title":"\#(item.title)","updatedAt":\#(now - index * 60_000),"archived":false\#(pin)\#(art),"preview":"\#(item.title)"}"#
+                return #"{"key":"\#(item.key)","title":"\#(item.title)","updatedAt":\#(now - index * 60_000),"archived":\#(item.archived)\#(pin)\#(art),"preview":"\#(item.title)"}"#
             }
-            let history = lock.withLock { self.history }
+            let archived = Self.query("archived", in: target) == "true"
+            let history = lock.withLock { self.history }.filter { $0.archived == archived }
             let offset = Int(Self.query("cursor", in: target) ?? "") ?? 0
             let unpinned = Array(history.enumerated().filter { !$0.element.pinned })
             let page = unpinned.dropFirst(offset).prefix(listPageSize)

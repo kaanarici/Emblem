@@ -66,54 +66,65 @@ extension ConversationStore {
         }
     }
 
-    private func changeConversation(
-        key: String, change: ConversationHistory.Change, onFailure: (@MainActor () -> Void)?
-    ) -> Bool {
+    func commitConversationChanges(_ edits: [ConversationHistory.Edit], onFailure: (@MainActor () -> Void)? = nil) {
         let history = self.history
-        guard let edit = history.edit(key, change) else { return false }
         Task { [weak self] in
-            switch await history.save(edit) {
+            switch await history.save(edits) {
             case .saved: self?.refreshHome()
             case .failed:
-                history.discard(edit)
+                edits.forEach(history.discard)
                 onFailure?()
             case .superseded: break
             }
         }
+    }
+
+    func commitConversationRemovals(_ edits: [ConversationHistory.Edit], onFailure: (@MainActor () -> Void)? = nil) {
+        let history = self.history
+        let keys = Set(edits.map(\.key))
+        let removed = keys.compactMap(removeConversationCard)
+        for run in generationRegistry.runs.values
+        where run.page.conversationKey.map(keys.contains) == true && run.session.isActive {
+            cancelGeneration(run, navigatingAway: true)
+        }
+        if let current = currentConversationKey, keys.contains(current) {
+            popToHome(refresh: false)
+        }
+        Task { [weak self] in
+            switch await history.save(edits) {
+            case .saved:
+                guard let self else { return }
+                for run in self.generationRegistry.runs.values {
+                    guard let key = run.page.conversationKey, keys.contains(key) else { continue }
+                    run.session.clearRetryCandidate(conversationKey: key)
+                }
+                self.forwardPages.removeAll { $0.conversationKey.map(keys.contains) == true }
+            case .failed:
+                edits.forEach(history.discard)
+                for removal in removed.reversed() { self?.restoreConversationCard(removal) }
+                onFailure?()
+            case .superseded: break
+            }
+        }
+    }
+
+    private func changeConversation(
+        key: String, change: ConversationHistory.Change, onFailure: (@MainActor () -> Void)?
+    ) -> Bool {
+        guard let edit = history.edit(key, change) else { return false }
+        commitConversationChanges([edit], onFailure: onFailure)
         return true
     }
 
     private func removeConversation(
         key: String, change: ConversationHistory.Change, onFailure: (@MainActor () -> Void)?
     ) -> Bool {
-        let history = self.history
         guard let edit = history.edit(key, change) else { return false }
-        let removed = removeConversationCard(key: key)
-        for run in generationRegistry.runs.values where run.page.conversationKey == key && run.session.isActive {
-            cancelGeneration(run, navigatingAway: true)
-        }
-        if currentConversationKey == key {
-            popToHome(refresh: false)
-        }
-        Task { [weak self] in
-            switch await history.save(edit) {
-            case .saved:
-                guard let self else { return }
-                for run in self.generationRegistry.runs.values where run.page.conversationKey == key {
-                    run.session.clearRetryCandidate(conversationKey: key)
-                }
-                self.forwardPages.removeAll { $0.conversationKey == key }
-            case .failed:
-                history.discard(edit)
-                if let removed { self?.restoreConversationCard(removed) }
-                onFailure?()
-            case .superseded: break
-            }
-        }
+        commitConversationRemovals([edit], onFailure: onFailure)
         return true
     }
 
-    private func removeConversationCard(key: String) -> RemovedConversationCard? {
+    private func removeConversationCard(_ key: String) -> RemovedConversationCard? {
         guard let home = homePage else { return nil }
         for blockIndex in home.blocks.indices {
             guard case .cardCarousel(var carousel) = home.blocks[blockIndex],

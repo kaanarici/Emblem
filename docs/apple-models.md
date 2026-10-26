@@ -1,6 +1,6 @@
 # Apple Foundation Models
 
-Settings, then Apple Intelligence, picks the Emblem server, Apple's on-device model or Apple's Private Cloud Compute (PCC) model. The choice persists across launches. A failed Apple-model request shows its error and is never retried on the server.
+Settings, then Runs on, picks the Emblem server, Apple's on-device model or Apple's Private Cloud Compute (PCC) model. The choice persists across launches. A failed Apple-model request shows its error and is never retried on the server.
 
 ## On device
 

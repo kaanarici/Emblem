@@ -129,17 +129,49 @@ final class NavigationJourneyTests: JourneyTestCase {
         settings.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 6))
 
-        let row = app.buttons["Apple Intelligence"].firstMatch
+        let row = app.buttons["Runs on"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         if !row.isHittable { app.swipeUp() }
         tap(row)
-        XCTAssertTrue(app.navigationBars["Apple Intelligence"].waitForExistence(timeout: 5))
-        tap(app.navigationBars["Apple Intelligence"].buttons.firstMatch)
+        XCTAssertTrue(app.navigationBars["Runs on"].waitForExistence(timeout: 5))
+        tap(app.navigationBars["Runs on"].buttons.firstMatch)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
 
         openSidebar()
         tap(app.buttons.matching(NSPredicate(format: "label == 'Home'")).firstMatch)
         XCTAssertTrue(element("home-greeting").waitForExistence(timeout: 6))
+    }
+
+    func testChatHistoryDeletesSeveralChatsInOneRequest() throws {
+        let server = try StubServer(history: (1...6).map {
+            StubServer.Conversation(key: "chat-\($0)", title: "Chat \($0)", fixture: "natural-evidence")
+        })
+        launch(server)
+        XCTAssertTrue(element("home-greeting").waitForExistence(timeout: 10))
+        openSidebar()
+        tap(app.buttons["sidebar-settings"])
+        tap(app.buttons["Chat history"].firstMatch, timeout: 6)
+        XCTAssertTrue(element("chat-chat-1").waitForExistence(timeout: 8), "Chat history listed nothing")
+
+        tap(app.buttons["chats-select"])
+        let doomed = ["chat-1", "chat-3", "chat-5"]
+        for key in doomed { tap(element("chat-\(key)")) }
+        XCTAssertTrue(app.navigationBars["3 Selected"].waitForExistence(timeout: 3), "The rows were not selected")
+        tap(app.buttons["chats-delete"])
+        tap(app.buttons["Delete 3 Chats"])
+
+        for key in doomed {
+            XCTAssertTrue(element("chat-\(key)").waitForNonExistence(timeout: 3), "\(key) stayed in the list")
+        }
+        XCTAssertTrue(element("chat-chat-2").exists)
+        XCTAssertTrue(element("chats-undo-toast").exists, "Deleting offered no undo")
+        let sent = expectation(for: NSPredicate { _, _ in
+            server.conversationChanges.contains { $0.action == "delete" }
+        }, evaluatedWith: nil)
+        wait(for: [sent], timeout: 10)
+        let deletes = server.conversationChanges.filter { $0.action == "delete" }
+        XCTAssertEqual(deletes.count, 1, "The chats were not deleted in one request")
+        XCTAssertEqual(Set(deletes.first?.keys ?? []), Set(doomed))
     }
 
     func testHomeThatFailsToLoadStillGreetsAndOffersRetry() throws {

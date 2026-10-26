@@ -12,6 +12,7 @@ const PAGE_BYTES = 4 * 1024 * 1024;
 const PURGE_BATCH = 100;
 const PURGE_BYTES = 1024 * 1024;
 const MAX_TITLE = 120;
+const MAX_CHANGE_KEYS = 100;
 
 const conversationValidator = v.object({
   key: v.string(),
@@ -188,10 +189,16 @@ export const setPinned = mutation({
 });
 
 export const setArchived = mutation({
-  args: { conversationKey: v.string(), archived: v.boolean() },
-  returns: v.boolean(),
-  handler: async (ctx, args) =>
-    await updateSummary(ctx, args.conversationKey, { archived: args.archived }),
+  args: { conversationKeys: v.array(v.string()), archived: v.boolean() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    if (args.conversationKeys.length > MAX_CHANGE_KEYS) throw new Error("too many conversations");
+    let changed = 0;
+    for (const conversationKey of new Set(args.conversationKeys)) {
+      if (await updateSummary(ctx, conversationKey, { archived: args.archived })) changed++;
+    }
+    return changed;
+  },
 });
 
 export const rename = mutation({

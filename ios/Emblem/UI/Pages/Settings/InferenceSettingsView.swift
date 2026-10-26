@@ -14,14 +14,10 @@ struct InferenceSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Model")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(Theme.ink)
                 Text("Choose a model and start chatting. Emblem provides access; no API key is needed.")
                     .font(.system(size: 16))
                     .foregroundStyle(Theme.inkSecondary)
                     .lineSpacing(3)
-                    .padding(.top, 10)
 
                 managedModelCard
                     .padding(.top, 24)
@@ -49,7 +45,7 @@ struct InferenceSettingsView: View {
             .padding(.bottom, 60)
         }
         .background(Theme.background)
-        .navigationTitle("AI provider")
+        .navigationTitle("Model")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             choice = UserInferenceCredentials.choice(userID: userID)

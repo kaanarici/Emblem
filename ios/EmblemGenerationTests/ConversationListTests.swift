@@ -11,7 +11,7 @@ struct ConversationListTests {
 
     private func history(
         fetch: @escaping @MainActor (ConversationHistory.Scope, String?) async throws -> ConversationPage,
-        send: @escaping @MainActor (UUID, [String: String]) async throws -> Void = { _, _ in }
+        send: @escaping @MainActor (UUID, ConversationHistory.Request) async throws -> Void = { _, _ in }
     ) -> ConversationHistory {
         ConversationHistory(cacheDirectory: nil, fetch: fetch, send: send)
     }
@@ -142,7 +142,7 @@ struct ConversationListTests {
         let history = history(
             fetch: { _, _ in ConversationPage(conversations: [item("a", updatedAt: 1)]) },
             send: { _, body in
-                #expect(body == ["action": "delete", "conversationKey": "a"])
+                #expect(body == ConversationHistory.Request(action: "delete", conversationKey: "a"))
                 attempts += 1
                 if attempts == 1 { throw GenerateClient.JSONRequestFailure(statusCode: 503) }
             })
@@ -152,6 +152,26 @@ struct ConversationListTests {
         #expect(await history.save(edit) == .saved)
         #expect(attempts == 2)
         #expect(history.items.isEmpty)
+    }
+
+    @Test func manyChatsLeaveInBatchesAndAFailedBatchComesBack() async throws {
+        let keys = (0..<130).map { "c\($0)" }
+        var bodies: [ConversationHistory.Request] = []
+        let history = history(
+            fetch: { _, _ in ConversationPage(conversations: keys.enumerated().map { item($1, updatedAt: Double($0)) }) },
+            send: { _, body in
+                bodies.append(body)
+                if bodies.count == 2 { throw GenerateClient.JSONRequestFailure(statusCode: 500) }
+            })
+        await history.load()
+        let edits = history.edit(keys, .archive(true))
+        #expect(history.items.isEmpty)
+        #expect(await history.save(edits) == .failed)
+        edits.forEach(history.discard)
+        #expect(bodies.map { $0.conversationKeys?.count } == [100, 30])
+        #expect(bodies.allSatisfy { $0.action == "archive" && $0.conversationKey == nil })
+        #expect(Set(history.items.map(\.key)) == Set(keys.suffix(30)))
+        #expect(Set(history.items(.archived).map(\.key)) == Set(keys.prefix(100)))
     }
 
     @Test func aChangeFromThePreviousAccountNeverLandsOnTheNextOne() async throws {

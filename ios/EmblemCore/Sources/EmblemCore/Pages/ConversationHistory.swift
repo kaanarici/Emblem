@@ -94,12 +94,19 @@ public final class ConversationHistory {
 
     public struct Edit: Sendable {
         fileprivate let id: UUID
-        fileprivate let key: String
+        public let key: String
         fileprivate let field: Field
         fileprivate let epoch: UUID
     }
 
     fileprivate enum Field: Sendable { case pinned, title, archived, deleted }
+
+    public struct Request: Encodable, Equatable, Sendable {
+        public let action: String
+        public var conversationKey: String?
+        public var conversationKeys: [String]?
+        public var title: String?
+    }
 
     private struct PendingEdit {
         let id: UUID
@@ -130,7 +137,7 @@ public final class ConversationHistory {
     public private(set) var ownerID: String?
     public nonisolated let cache: DiskCache
     private let fetch: @MainActor (Scope, String?) async throws -> ConversationPage
-    private let send: @MainActor (UUID, [String: String]) async throws -> Void
+    private let send: @MainActor (UUID, Request) async throws -> Void
     private var active = List()
     private var archived = List()
     private var copies: [String: Copy] = [:]
@@ -141,7 +148,7 @@ public final class ConversationHistory {
         cacheDirectory: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
             .first?.appending(path: "ConversationHistory", directoryHint: .isDirectory),
         fetch: @escaping @MainActor (Scope, String?) async throws -> ConversationPage = ConversationPage.fetch,
-        send: @escaping @MainActor (UUID, [String: String]) async throws -> Void = { epoch, body in
+        send: @escaping @MainActor (UUID, Request) async throws -> Void = { epoch, body in
             _ = try await GenerateClient.postJSON(identityEpoch: epoch, path: "api/conversation", body: body)
         }
     ) {
@@ -155,6 +162,8 @@ public final class ConversationHistory {
     public var items: [ConversationSummary] { items(.active) }
     public var loadState: LoadState { active.state }
     public var canLoadMore: Bool { active.cursor != nil }
+
+    public func canLoadMore(_ scope: Scope) -> Bool { self[keyPath: list(scope)].cursor != nil }
 
     public func items(_ scope: Scope) -> [ConversationSummary] {
         let shown = active.keys.union(archived.keys)
@@ -219,28 +228,44 @@ public final class ConversationHistory {
         return edit
     }
 
+    public func edit(_ keys: [String], _ change: Change) -> [Edit] {
+        keys.compactMap { edit($0, change) }
+    }
+
     public func save(_ edit: Edit) async -> SaveResult {
-        guard let change = pending(edit)?.change else { return .superseded }
-        var body = ["action": change.action, "conversationKey": edit.key]
-        if case .rename(let title) = change { body["title"] = title }
-        var retries = 2
-        while true {
-            do {
-                try await send(edit.epoch, body)
-                break
-            } catch let failure as GenerateClient.JSONRequestFailure
-                        where change == .delete && failure.statusCode == 503 && retries > 0 {
-                retries -= 1
-                try? await Task.sleep(for: .seconds(1))
-                guard pending(edit) != nil else { return .superseded }
-            } catch {
-                return pending(edit) == nil ? .superseded : .failed
+        await save([edit])
+    }
+
+    public func save(_ group: [Edit]) async -> SaveResult {
+        guard let change = group.lazy.compactMap({ self.pending($0)?.change }).first else { return .superseded }
+        var result = SaveResult.superseded
+        for start in stride(from: 0, to: group.count, by: Self.maxKeysPerRequest) {
+            let batch = group[start..<min(start + Self.maxKeysPerRequest, group.count)].filter { pending($0) != nil }
+            guard let epoch = batch.first?.epoch else { continue }
+            var body = Request(action: change.action)
+            if batch.count == 1 { body.conversationKey = batch[0].key } else { body.conversationKeys = batch.map(\.key) }
+            if case .rename(let title) = change { body.title = title }
+            var retries = 2
+            while true {
+                do {
+                    try await send(epoch, body)
+                    break
+                } catch let failure as GenerateClient.JSONRequestFailure
+                            where change == .delete && failure.statusCode == 503 && retries > 0 {
+                    retries -= 1
+                    try? await Task.sleep(for: .seconds(1))
+                    guard batch.contains(where: { pending($0) != nil }) else { return .superseded }
+                } catch {
+                    return batch.contains { pending($0) != nil } ? .failed : .superseded
+                }
             }
+            for edit in batch where pending(edit) != nil {
+                edits[edit.key]?[edit.field]?.savedAfter = requests
+                result = .saved
+            }
+            invalidate()
         }
-        guard pending(edit) != nil else { return .superseded }
-        edits[edit.key]?[edit.field]?.savedAfter = requests
-        invalidate()
-        return .saved
+        return result
     }
 
     public func discard(_ edit: Edit) {
@@ -256,6 +281,8 @@ public final class ConversationHistory {
     }
 
     public var removingKeys: Set<String> { Set(edits.keys.filter(isRemoving)) }
+
+    private static let maxKeysPerRequest = 100
 
     private func list(_ scope: Scope) -> ReferenceWritableKeyPath<ConversationHistory, List> {
         scope == .active ? \.active : \.archived

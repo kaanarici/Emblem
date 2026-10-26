@@ -190,6 +190,13 @@ extension RootView {
                         primaryDestination = nil
                         primaryRoot = nil
                     },
+                    onOpenConversation: { key in
+                        primaryDestination = nil
+                        primaryRoot = nil
+                        if store.currentConversationKey != key {
+                            store.restoreConversation(key: key)
+                        }
+                    },
                     onSignIn: {
                         primaryDestination = nil
                         primaryRoot = nil

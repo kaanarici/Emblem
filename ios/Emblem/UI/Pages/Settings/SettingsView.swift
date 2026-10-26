@@ -7,6 +7,7 @@ struct SettingsView: View {
     var showsMenu = false
     var onSubpagePushed: (Bool) -> Void = { _ in }
     var onOpenAutomation: (String) -> Void = { _ in }
+    var onOpenConversation: (String) -> Void = { _ in }
     var onSignIn: () -> Void = {}
 
     @State private var voice = VoiceOutput.shared
@@ -16,11 +17,13 @@ struct SettingsView: View {
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
     @AppStorage(Accent.storageKey) private var accent = Accent.aluminum
     @AppStorage(ListeningStyle.storageKey) private var listening = ListeningStyle.wave
+    @AppStorage("apple.model") private var appleModel = ""
+    @State private var serverModel = UserInferenceCredentials.Choice.emblem
     @State private var showConnectors = false
     @State private var showMemory = false
-    @State private var showInference = false
     @State private var showScheduled = false
-    @State private var showPrivacy = false
+    @State private var confirmDeleteAccount = false
+    @State private var deleteAccountFailed = false
     @State private var legalDoc: LegalDoc?
 
     var body: some View {
@@ -29,22 +32,24 @@ struct SettingsView: View {
                 identity
                     .padding(.top, 34)
 
-                SettingsSectionLabel(title: "Theme")
+                SettingsSectionLabel(title: "Appearance")
                     .padding(.top, 46)
                 SettingsCard {
-                    SettingsPickerRow(title: "Appearance", options: Appearance.allCases, selection: $appearance,
+                    SettingsPickerRow(title: "Theme", options: Appearance.allCases, selection: $appearance,
                                       name: \.title)
                     SettingsHairline()
                     SettingsPickerRow(title: "Accent color", options: Accent.allCases, selection: $accent,
                                       name: \.title, swatch: \.swatch)
                     SettingsHairline()
-                    SettingsPickerRow(title: "Listening", options: ListeningStyle.allCases, selection: $listening,
+                    SettingsPickerRow(title: "Listening style", options: ListeningStyle.allCases, selection: $listening,
                                       name: \.title)
                 }
 
-                SettingsSectionLabel(title: "Personalization")
+                SettingsSectionLabel(title: "Chats")
                     .padding(.top, SettingsMetrics.sectionGap)
                 SettingsCard {
+                    navigationRow("Chat history") { ChatHistoryView(onOpen: onOpenConversation) }
+                    SettingsHairline()
                     row("Memory", value: auth.isSignedIn ? (memoryEnabled ? "On" : "Off") : nil) { showMemory = true }
                     if agentOwnerVisible {
                         SettingsHairline()
@@ -52,10 +57,16 @@ struct SettingsView: View {
                     }
                 }
 
-                SettingsSectionLabel(title: "Voice")
+                SettingsSectionLabel(title: "Assistant")
                     .padding(.top, SettingsMetrics.sectionGap)
                 SettingsCard {
-                    SettingsToggleRow(title: "Mute \(AppInfo.name) voice", isOn: muteBinding)
+                    if let userID = inferenceOwnerID {
+                        navigationRow("Model", value: modelValue) { InferenceSettingsView(userID: userID) }
+                        SettingsHairline()
+                    }
+                    navigationRow("Runs on", value: runsOnValue) { AppleModelSettingsView() }
+                    SettingsHairline()
+                    SettingsToggleRow(title: "Spoken replies", isOn: spokenBinding)
                 }
 
                 SettingsSectionLabel(title: "Connections")
@@ -65,29 +76,13 @@ struct SettingsView: View {
                         row("Connectors") { showConnectors = true }
                         SettingsHairline()
                     }
-                    row("Location settings", trailing: .outbound) {
+                    row("Location", trailing: .outbound) {
                         open(UIApplication.openSettingsURLString)
                     }
                     SettingsHairline()
-                    row("Notification settings", trailing: .outbound) {
+                    row("Notifications", trailing: .outbound) {
                         open(UIApplication.openNotificationSettingsURLString)
                     }
-                }
-
-                SettingsSectionLabel(title: "Models")
-                    .padding(.top, SettingsMetrics.sectionGap)
-                SettingsCard {
-                    navigationRow("Apple Intelligence") { AppleModelSettingsView() }
-                    if let userID = inferenceOwnerID {
-                        SettingsHairline()
-                        navigationRow("AI provider") { InferenceSettingsView(userID: userID) }
-                    }
-                }
-
-                SettingsSectionLabel(title: "Privacy")
-                    .padding(.top, SettingsMetrics.sectionGap)
-                SettingsCard {
-                    row("Data & Privacy") { showPrivacy = true }
                 }
 
                 SettingsSectionLabel(title: "About")
@@ -98,8 +93,8 @@ struct SettingsView: View {
                     row("Terms of service") { legalDoc = .terms }
                 }
 
-                accountButton
-                    .padding(.top, 36)
+                account
+                    .padding(.top, SettingsMetrics.sectionGap)
 
                 Text("Version \(version)")
                     .font(.system(size: 13))
@@ -119,15 +114,9 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $showMemory) {
             MemorySettingsView()
         }
-        .navigationDestination(isPresented: $showInference) {
-            InferenceSettingsView(userID: inferenceOwnerID ?? "")
-        }
         .navigationDestination(isPresented: $showScheduled) {
             ScheduledPagesView(agents: agents, memoryEnabled: memoryEnabled,
                                onOpenResult: onOpenAutomation)
-        }
-        .navigationDestination(isPresented: $showPrivacy) {
-            DataPrivacyView(onAccountDeleted: onBack)
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -163,10 +152,32 @@ struct SettingsView: View {
             guard agents.hasLoaded else { return }
             Task { await agents.reconcileDailyBrief(memory: enabled) }
         }
-        .onAppear { onSubpagePushed(false) }
+        .onAppear {
+            onSubpagePushed(false)
+            if let userID = inferenceOwnerID { serverModel = UserInferenceCredentials.choice(userID: userID) }
+        }
         .onDisappear { onSubpagePushed(true) }
         .sheet(item: $legalDoc) { doc in
             LegalSheet(doc: doc)
+        }
+        .alert("Delete account?", isPresented: $confirmDeleteAccount) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    if await auth.deleteAccount() {
+                        onBack()
+                    } else {
+                        deleteAccountFailed = true
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This erases your conversations, memories, profile and scheduled pages from your server, disconnects your apps and deletes your sign-in. It can't be undone.")
+        }
+        .alert("Couldn't delete account", isPresented: $deleteAccountFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your account is still intact. Check your connection and try again.")
         }
     }
 
@@ -218,8 +229,26 @@ struct SettingsView: View {
 
     private var agentOwnerVisible: Bool { auth.isSignedIn }
 
-    private var muteBinding: Binding<Bool> {
-        Binding(get: { voice.muted }, set: { voice.muted = $0 })
+    private var spokenBinding: Binding<Bool> {
+        Binding(get: { !voice.muted }, set: { voice.muted = !$0 })
+    }
+
+    private var runsOn: OnDeviceModel.Selection {
+        OnDeviceModel.Selection(rawValue: appleModel) ?? .emblem
+    }
+
+    private var runsOnValue: String {
+        switch runsOn {
+        case .emblem: AppInfo.name
+        case .onDevice: "This iPhone"
+        case .privateCloud: "Private Cloud"
+        }
+    }
+
+    private var modelValue: String? {
+        guard runsOn == .emblem else { return nil }
+        if serverModel == .custom { return "Your key" }
+        return serverModel.model?.name ?? AppInfo.name
     }
 
     private func row(
@@ -236,41 +265,43 @@ struct SettingsView: View {
         .accessibilityHint(trailing == .outbound ? "Opens the Settings app" : "")
     }
 
-    private func navigationRow(_ title: String, destination: @escaping () -> some View) -> some View {
+    private func navigationRow(
+        _ title: String, value: String? = nil, destination: @escaping () -> some View
+    ) -> some View {
         NavigationLink {
             destination()
         } label: {
-            SettingsRowLabel(title: title)
+            SettingsRowLabel(title: title, value: value)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(title)
     }
 
     @ViewBuilder
-    private var accountButton: some View {
+    private var account: some View {
         if auth.isSignedIn {
-            capsuleButton("Log out") {
-                Task {
-                    await auth.signOut()
-                    onBack()
+            SettingsCard {
+                SettingsDestructiveRow(title: "Log out") {
+                    Task {
+                        await auth.signOut()
+                        onBack()
+                    }
                 }
+                SettingsHairline()
+                SettingsDestructiveRow(title: "Delete account") { confirmDeleteAccount = true }
             }
         } else {
-            capsuleButton("Sign in") { onSignIn() }
+            Button(action: onSignIn) {
+                Text("Sign in")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Theme.surface, in: Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.pressable)
         }
-    }
-
-    private func capsuleButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Theme.ink)
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-                .background(Theme.surface, in: Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.pressable)
     }
 
     private func open(_ urlString: String) {

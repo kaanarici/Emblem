@@ -169,8 +169,6 @@ struct SettingsDestructiveRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: "trash")
-                    .font(.system(size: 15, weight: .medium))
                 Text(title)
                     .font(SettingsMetrics.titleFont)
                 Spacer(minLength: 0)

@@ -364,4 +364,57 @@ describe("conversation delete", () => {
     ).toEqual({ pages: [], nextCursor: null });
     expect((await conversations()).conversations).toEqual([]);
   });
+
+  it("archives, restores and deletes many conversations in one request", async () => {
+    const { t } = setup();
+    await seed(t, 5);
+    const keys = ["c-0", "c-2", "c-4"];
+
+    expect(await act({ action: "archive", conversationKeys: [...keys, "missing"] })).toEqual({
+      status: 200,
+      body: { ok: true, action: "archive", count: 3 },
+    });
+    expect((await conversations()).conversations.map((item) => item.key)).toEqual(["c-3", "c-1"]);
+    expect((await conversations("?archived=true")).conversations.map((item) => item.key)).toEqual([
+      "c-4",
+      "c-2",
+      "c-0",
+    ]);
+
+    await act({ action: "unarchive", conversationKeys: ["c-0"] });
+    expect(await act({ action: "delete", conversationKeys: keys })).toMatchObject({
+      status: 200,
+      body: { ok: true, action: "delete" },
+    });
+    expect((await conversations()).conversations.map((item) => item.key)).toEqual(["c-3", "c-1"]);
+    expect((await conversations("?archived=true")).conversations).toEqual([]);
+  });
+
+  it("refuses an empty or oversized bulk change", async () => {
+    setup();
+    for (const conversationKeys of [[], Array.from({ length: 101 }, (_, i) => `c-${i}`)]) {
+      expect((await act({ action: "delete", conversationKeys })).status).toBe(400);
+    }
+    expect((await act({ action: "pin", conversationKeys: ["c-0"] })).status).toBe(400);
+  });
+
+  it("leaves another person's conversations alone in a bulk change", async () => {
+    const { t } = setup();
+    await seed(t, 2);
+    auth.convex = t.withIdentity({
+      subject: "bob",
+      issuer: "https://clerk.example",
+      tokenIdentifier: "https://clerk.example|bob",
+    });
+    expect(await act({ action: "archive", conversationKeys: ["c-0", "c-1"] })).toMatchObject({
+      body: { count: 0 },
+    });
+    await act({ action: "delete", conversationKeys: ["c-0", "c-1"] });
+    auth.convex = t.withIdentity({
+      subject: "alice",
+      issuer: "https://clerk.example",
+      tokenIdentifier: owner,
+    });
+    expect((await conversations()).conversations.map((item) => item.key)).toEqual(["c-1", "c-0"]);
+  });
 });

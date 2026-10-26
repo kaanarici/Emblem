@@ -77,7 +77,7 @@ struct LegalSheet: View {
         When you sign in, the server keeps your conversations and pages, saved memories, your profile and custom instructions, scheduled pages, and illustrations made for you. This iPhone keeps your saved pages and settings, and your own AI provider key in the Keychain if you add one.
         """),
         ("Deleting your account", """
-        Settings › Data & Privacy › Delete account erases all of that from the server, disconnects your connected apps, deletes your sign-in account, and removes saved pages and your provider key from this iPhone. The server keeps only a one-way hash of your account ID, so nothing new can be saved under it. Copies a provider already received follow that provider's policy.
+        Settings › Delete account erases all of that from the server, disconnects your connected apps, deletes your sign-in account, and removes saved pages and your provider key from this iPhone. The server keeps only a one-way hash of your account ID, so nothing new can be saved under it. Copies a provider already received follow that provider's policy.
         """),
     ]
 }

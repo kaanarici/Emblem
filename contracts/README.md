@@ -75,10 +75,10 @@ Fixtures: `history-first.json`, `history-next.json`.
 
 ## `POST /api/conversation`
 
-Body: `{ action: "pin" | "unpin" | "archive" | "unarchive" | "rename" | "delete", conversationKey: string, title?: string }`.
+Body: `{ action: "pin" | "unpin" | "archive" | "unarchive" | "rename" | "delete", conversationKey: string, title?: string }`, or for many conversations at once `{ action: "archive" | "unarchive" | "delete", conversationKeys: string[] }` with 1 to 100 keys.
 
-- `pin`, `unpin`, `archive`, `unarchive` and `rename` are one write: `{ ok: true, action }`, or `404` when the conversation has no summary yet. `rename` needs a non-empty `title` (trimmed, at most 120 characters stored).
-- `delete` erases every page, generation record and summary of the conversation, cancelling a running generation. It returns `{ ok: true, action, count }`. When it cannot finish in one request it returns `503 { ok: false, retryable: true, code: "conversation_incomplete" }`; send the same request again.
+- `pin`, `unpin`, `archive`, `unarchive` and `rename` are one write: `{ ok: true, action }`, or `404` when the conversation has no summary yet. `rename` needs a non-empty `title` (trimmed, at most 120 characters stored). With `conversationKeys`, `archive` and `unarchive` are one write for all of them and return `{ ok: true, action, count }`, where `count` is how many of the person's conversations changed; unknown keys and other people's conversations are skipped.
+- `delete` erases every page, generation record and summary of each conversation, cancelling a running generation. It returns `{ ok: true, action, count }`. When it cannot finish in one request it returns `503 { ok: false, retryable: true, code: "conversation_incomplete" }`; send the same request again.
 
 ## `POST /api/home`
 
