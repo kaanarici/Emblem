@@ -255,10 +255,8 @@ struct DockCoreLabel: View {
         guard !reduceMotion else { return .opacity }
         return .asymmetric(
             insertion: .opacity.combined(with: .modifier(active: LabelBlur(radius: 4), identity: LabelBlur(radius: 0)))
-                .combined(with: .offset(y: 5))
                 .animation(.smooth(duration: 0.3).delay(0.1)),
             removal: .opacity.combined(with: .modifier(active: LabelBlur(radius: 4), identity: LabelBlur(radius: 0)))
-                .combined(with: .offset(y: -5))
                 .animation(.easeOut(duration: 0.12)))
     }
 
