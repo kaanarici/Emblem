@@ -46,15 +46,11 @@ extension DockView {
     }
 
     func isQuestionContinue(_ control: DockTrailingControl?) -> Bool {
-        guard case .action(let action) = control, action != ConversationStore.doneAction else { return false }
+        guard case .action(let action) = control else { return false }
         return action == ConversationStore.continueAction
             || action == ConversationStore.nextAction
+            || action == ConversationStore.doneAction
             || store.hasEditableQuestions
-    }
-
-    func isDone(_ control: DockTrailingControl?) -> Bool {
-        guard case .action(let action) = control else { return false }
-        return action == ConversationStore.doneAction
     }
 
     static let wideMicWidth: CGFloat = 73.4
@@ -66,7 +62,6 @@ extension DockView {
 
     func trailingWidth(_ control: DockTrailingControl) -> CGFloat {
         if isQuestionContinue(control) { return wideContinueWidth }
-        if isDone(control) { return Self.innerControlSize }
         let text = (control.label as NSString).size(withAttributes: [
             .font: UIFont.systemFont(ofSize: 17, weight: .semibold)]).width
         return ceil(text) + 28
@@ -95,29 +90,20 @@ extension DockView {
                 }
             }
         } label: {
-            if isDone(control) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(accent.glyph)
-                    .frame(width: Self.innerControlSize, height: Self.innerControlSize)
-                    .background(AnodizedSurface(shape: Circle()))
-                    .contentShape(Circle())
-            } else {
-                Text(control.label)
-                    .font(.system(size: isQuestionContinue(control) ? 14.3 : 17, weight: .semibold))
-                    .foregroundStyle(accent.glyph)
-                    .contentTransition(.opacity)
-                    .animation(.easeOut(duration: 0.2), value: control.label)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .truncationMode(.tail)
-                    .padding(.horizontal, 14)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(width: isQuestionContinue(control) ? wideContinueWidth : nil)
-                    .frame(height: Self.innerControlSize)
-                    .background(AnodizedSurface(shape: Capsule()))
-                    .contentShape(Capsule())
-            }
+            Text(control.label)
+                .font(.system(size: isQuestionContinue(control) ? 14.3 : 17, weight: .semibold))
+                .foregroundStyle(accent.glyph)
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.2), value: control.label)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .truncationMode(.tail)
+                .padding(.horizontal, 14)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(width: isQuestionContinue(control) ? wideContinueWidth : nil)
+                .frame(height: Self.innerControlSize)
+                .background(AnodizedSurface(shape: Capsule()))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(control == .retry ? "Retry response" : control.label)

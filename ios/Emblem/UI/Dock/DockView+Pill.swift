@@ -3,10 +3,6 @@ import SwiftUI
 import EmblemCore
 
 extension DockView {
-    func mergingLabel(_ control: DockTrailingControl) -> Text {
-        isDone(control) ? Text(Image(systemName: "checkmark")) : Text(control.label)
-    }
-
     func darkPill(thinking: Bool, compact: Bool, merging: DockTrailingControl? = nil) -> some View {
         let status = store.statusText ?? "Thinking…"
         let measuredStatusWidth = ceil(
@@ -57,7 +53,7 @@ extension DockView {
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) {
                 if let merging {
-                    mergingLabel(merging)
+                    Text(merging.label)
                         .font(.system(size: isQuestionContinue(merging) ? 15 : 17, weight: .semibold))
                         .foregroundStyle(accent.glyph)
                         .lineLimit(1)
