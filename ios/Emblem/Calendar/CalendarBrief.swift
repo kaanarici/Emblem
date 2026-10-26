@@ -7,9 +7,9 @@ enum CalendarBrief {
         let open = todos.filter { !$0.done }.count
         let tasks = open == 1 ? "1 to-do" : "\(open) to-dos"
         guard !timed.isEmpty else {
-            if let allDay = events.first { return "**\(allDay.title)** is all day, and nothing else is on the calendar." }
+            if let allDay = events.first { return "**\(escape(allDay.title))** is all day, and nothing else is on the calendar." }
             return open == 0 ? "Nothing on the calendar. **The whole day is yours.**"
-                : "Nothing on the calendar, and **\(tasks)** to get to."
+                : "Nothing on the calendar, and [\(tasks)](\(link("todos"))) to get to."
         }
         let plan = CalendarDayPlan(events: events, day: day, calendar: calendar, now: day.holds(now) ? now : day.start)
         let gap = plan.items.compactMap { item -> CalendarFreeSlot? in
@@ -27,15 +27,17 @@ enum CalendarBrief {
         } else {
             opening.append("**\(timed.count) events**")
         }
-        if let gap { opening.append(gap.restOfDay ? "free after \(CalendarClock.spoken(gap.start, calendar: calendar))"
-                                       : "free \(CalendarClock.spoken(gap.start, calendar: calendar)) to "
-                                           + CalendarClock.spoken(gap.end, calendar: calendar)) }
+        if let gap {
+            let words = gap.restOfDay ? "free after \(CalendarClock.spoken(gap.start, calendar: calendar))"
+                : "free \(CalendarClock.spoken(gap.start, calendar: calendar)) to " + CalendarClock.spoken(gap.end, calendar: calendar)
+            opening.append("[\(words)](\(link("slot", gap.id)))")
+        }
         let upcoming = timed.first { $0.start > now } ?? timed.last
         var sentence = opening.joined(separator: ", ") + "."
         if let upcoming {
-            sentence += " \(upcoming.title) at **\(CalendarClock.spoken(upcoming.start, calendar: calendar))**."
+            sentence += " [\(escape(upcoming.title))](\(link("event", upcoming.id))) at **\(CalendarClock.spoken(upcoming.start, calendar: calendar))**."
         }
-        if open > 0 { sentence += " \(tasks.prefix(1).uppercased() + tasks.dropFirst()) to get to." }
+        if open > 0 { sentence += " [\(tasks.prefix(1).uppercased() + tasks.dropFirst())](\(link("todos"))) to get to." }
         return sentence
     }
 
@@ -50,6 +52,32 @@ enum CalendarBrief {
         var sentence = full.isEmpty ? "A steady week." : "**Full \(list(full)).**"
         if !open.isEmpty { sentence += " \(list(open)) \(open.count == 1 ? "is" : "are") wide open." }
         return sentence
+    }
+
+    static func nextDay(_ events: [CalendarAgendaEvent], day: DateInterval, calendar: Calendar) -> String {
+        let timed = events.filter { !$0.isAllDay && day.holds($0.start) }.sorted { $0.start < $1.start }
+        guard let first = timed.first else {
+            return events.first.map { "**\(escape($0.title))** all day" } ?? "Nothing planned yet"
+        }
+        let count = timed.count == 1 ? "" : " · \(timed.count) events"
+        return "Starts at **\(CalendarClock.spoken(first.start, calendar: calendar))** with \(escape(first.title))" + count
+    }
+
+    static let scheme = "emblem-calendar"
+
+    private static func link(_ kind: String, _ id: String? = nil) -> String {
+        var parts = URLComponents()
+        parts.scheme = scheme
+        parts.host = kind
+        if let id { parts.queryItems = [URLQueryItem(name: "id", value: id)] }
+        return parts.url?.absoluteString ?? "\(scheme)://\(kind)"
+    }
+
+    private static func escape(_ text: String) -> String {
+        text.reduce(into: "") { result, character in
+            if "\\[]()*_`~".contains(character) { result.append("\\") }
+            result.append(character)
+        }
     }
 
     private static func partOfDay(_ date: Date, _ calendar: Calendar) -> String {

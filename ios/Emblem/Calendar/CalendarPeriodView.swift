@@ -96,14 +96,16 @@ struct CalendarDayTimeline: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let notice = feed.notice { CalendarNoticeRow(notice: notice, feed: feed).padding(.bottom, 8) }
-                    CalendarBriefLine(text: feed.brief(for: period)).padding(.bottom, 16)
+                    CalendarBriefLine(text: feed.brief(for: period))
+                        .padding(.bottom, 16)
+                        .environment(\.openURL, OpenURLAction { url in follow(url, plan: plan, proxy: proxy) })
                     ForEach(plan.allDay) { event in
                         CalendarEventButton(event: event, actions: actions) {
                             CalendarEventRow(event: event, calendar: calendar, now: nil, compact: true)
                         }
                     }
                     if !plan.anytime.isEmpty || plan.anytimeDraft {
-                        CalendarSectionLabel(text: "To do").padding(.top, 16)
+                        CalendarSectionLabel(text: "To do").padding(.top, 16).id("todos")
                         ForEach(plan.anytime) { todo in
                             CalendarTodoRow(todo: todo, calendar: calendar) { feed.toggle(todo) }
                         }
@@ -138,6 +140,18 @@ struct CalendarDayTimeline: View {
                     .padding(.top, earlier.isEmpty && plan.anytime.isEmpty && !plan.anytimeDraft ? 0 : 8)
                     if plan.isEmpty {
                         CalendarEmptyDay(period: period, plan: plan, actions: actions)
+                    }
+                    if period.interval.end > now,
+                       let next = calendar.date(byAdding: .day, value: 1, to: period.interval.start),
+                       let after = calendar.date(byAdding: .day, value: 1, to: next) {
+                        let day = DateInterval(start: next, end: after)
+                        CalendarNextDayRow(
+                            title: calendar.isDate(next, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: now) ?? now)
+                                ? "Tomorrow" : CalendarClock.text(next, calendar: calendar, format: "EEEE"),
+                            summary: CalendarBrief.nextDay(feed.events(in: day), day: day, calendar: calendar)) {
+                            feed.onFocus?(next)
+                        }
+                        .padding(.top, 32)
                     }
                 }
                 .padding(.horizontal, CalendarMetrics.edge)
@@ -196,6 +210,31 @@ struct CalendarDayTimeline: View {
         case .free(let slot):
             CalendarFreeBand(slot: slot, calendar: calendar) { actions.feed.propose(slot) }
         }
+    }
+
+    private func follow(_ url: URL, plan: CalendarDayPlan, proxy: ScrollViewProxy) -> OpenURLAction.Result {
+        guard url.scheme == CalendarBrief.scheme else { return .systemAction }
+        let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value
+        let motion: Animation? = reduceMotion ? nil : .smooth(duration: 0.4)
+        switch url.host() {
+        case "event":
+            let events = plan.items.flatMap { item -> [CalendarAgendaEvent] in
+                if case .events(let events) = item { return events }
+                return []
+            }
+            if let event = events.first(where: { $0.id == id }) { actions.open(event) }
+        case "slot":
+            let slot = plan.items.lazy.compactMap { item -> CalendarFreeSlot? in
+                if case .free(let slot) = item, slot.id == id { return slot }
+                return nil
+            }.first
+            if let slot { actions.feed.propose(slot) }
+        case "todos":
+            withAnimation(motion) { proxy.scrollTo("todos", anchor: .top) }
+        default:
+            return .discarded
+        }
+        return .handled
     }
 
     private func earlierToggle(_ count: Int) -> some View {

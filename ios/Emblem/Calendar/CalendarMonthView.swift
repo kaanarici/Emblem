@@ -4,6 +4,8 @@ struct CalendarMonthView: View {
     let period: CalendarBrowserSnapshot
     let actions: CalendarPeriodActions
     @State private var chosen: Date?
+    @Namespace private var thumb
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -72,13 +74,13 @@ struct CalendarMonthView: View {
         let end = calendar.date(byAdding: .day, value: 1, to: date) ?? date
         let tints = inMonth ? actions.feed.events(in: DateInterval(start: date, end: end)).map(\.tint) : []
         return Button {
-            withAnimation(.smooth(duration: 0.28)) { chosen = date }
+            withAnimation(CalendarMotion.settle(reduceMotion)) { chosen = date }
         } label: {
             VStack(spacing: 6) {
                 Text(String(calendar.component(.day, from: date)))
                     .font(.system(size: 17, weight: isSelected || isToday ? .semibold : .regular))
                     .monospacedDigit()
-                    .foregroundStyle(isSelected ? CalendarMetrics.red(colorScheme) : Theme.ink)
+                    .foregroundStyle(Theme.ink)
                 HStack(spacing: 3) {
                     ForEach(Array(tints.prefix(3).enumerated()), id: \.offset) { _, tint in
                         Circle().fill(tint).frame(width: 5, height: 5)
@@ -87,6 +89,13 @@ struct CalendarMonthView: View {
                 .frame(height: 5)
             }
             .frame(width: 44, height: 52)
+            .background {
+                if isSelected {
+                    Color.clear
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .matchedGeometryEffect(id: "selected", in: thumb)
+                }
+            }
             .frame(maxWidth: .infinity)
             .opacity(!inMonth ? 0.22 : end <= calendar.startOfDay(for: now) ? 0.5 : 1)
             .contentShape(Rectangle())

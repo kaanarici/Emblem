@@ -95,13 +95,10 @@ struct CalendarEventRow: View {
                 }
             }
             .padding(.top, emphasized ? 21 : 2)
-            CalendarMarker {
-                Circle().fill(event.tint).frame(width: 10, height: 10)
-            }
-            .padding(.top, emphasized ? 26 : 7)
             VStack(alignment: .leading, spacing: 2) {
-                if emphasized, let now, let label = CalendarClock.countdown(for: event, now: now) {
-                    Text(label)
+                if emphasized, let now, let countdown = CalendarClock.countdown(for: event, now: now) {
+                    Text(CalendarClock.leave(for: event, now: now, travel: CalendarTravel.shared.minutes(to: event, now: now),
+                                             countdown: countdown, calendar: calendar))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(CalendarMetrics.ink(accent))
                         .padding(.bottom, 2)
@@ -114,7 +111,11 @@ struct CalendarEventRow: View {
                     Text(place).font(.system(size: 15)).foregroundStyle(Theme.inkSecondary).lineLimit(1)
                 }
             }
+            .overlay(alignment: .leading) {
+                Capsule().fill(event.tint).frame(width: 3).padding(.vertical, 2).offset(x: -12)
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, CalendarMetrics.content - CalendarMetrics.time)
             .padding(.vertical, emphasized ? 16 : 0)
             .padding(.trailing, 16)
         }
@@ -273,20 +274,55 @@ struct CalendarBriefLine: View {
             Text(Self.styled(text))
                 .font(.system(size: 20))
                 .foregroundStyle(Theme.inkSecondary)
+                .tint(Theme.ink)
                 .lineSpacing(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .transition(.opacity)
         }
     }
 
-    static func styled(_ text: String) -> AttributedString {
+    static func styled(_ text: String, size: CGFloat = 20) -> AttributedString {
         var value = (try? AttributedString(markdown: text)) ?? AttributedString(text)
-        let strong = value.runs.filter { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }.map(\.range)
+        let strong = value.runs.filter { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true || $0.link != nil }
+            .map(\.range)
         for range in strong {
             value[range].foregroundColor = Theme.ink
-            value[range].font = .system(size: 20, weight: .semibold)
+            value[range].font = .system(size: size, weight: .semibold)
         }
         return value
+    }
+}
+
+struct CalendarNextDayRow: View {
+    let title: String
+    let summary: String
+    let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.inkSecondary)
+                    Text(CalendarBriefLine.styled(summary, size: 17))
+                        .font(.system(size: 17))
+                        .foregroundStyle(Theme.inkSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Theme.surface, in: shape)
+            .overlay { shape.strokeBorder(CalendarMetrics.hairline(colorScheme), lineWidth: 0.5) }
+            .contentShape(shape)
+        }
+        .buttonStyle(.pressable)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("calendar-next-day")
     }
 }
 
@@ -334,7 +370,7 @@ struct CalendarNoticeRow: View {
         case .allowEvents: feed.requestAccess()
         case .eventsOff, .eventsAddOnly:
             if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
-        case .googleFailed, .offline: Task { await feed.loadGoogle(around: feed.now, force: true) }
+        case .googleFailed, .offline: feed.loadGoogle(around: feed.now, force: true)
         }
     }
 }

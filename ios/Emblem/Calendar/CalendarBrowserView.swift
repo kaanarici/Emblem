@@ -10,8 +10,10 @@ struct CalendarBrowserView<Response: View>: View {
     @State private var isUserPaging = false
     @State private var anchor: CalendarBrowserDay?
     @State private var pager = CalendarPagerTrack()
+    @State private var epoch = 0
+    @State private var entrance = AnyTransition.identity
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static var reach: Int { 30 }
-    private static var pageGap: CGFloat { 0 }
 
     init(selection: CalendarBrowserSelection, onMenu: @escaping () -> Void,
          onSelect: @escaping (CalendarBrowserIntent) -> Bool,
@@ -27,15 +29,18 @@ struct CalendarBrowserView<Response: View>: View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 header
-                if selection.mode == .daily {
-                    CalendarDayStrip(selection: selection, pager: pager,
-                                     anchor: anchor ?? selection.selectedDate,
-                                     reach: Self.reach, onSelect: onSelect)
-                } else {
-                    CalendarPeriodStrip(selection: selection, pager: pager,
-                                        anchor: anchor ?? selection.selectedDate, reach: Self.reach,
-                                        onSelect: onSelect) { pageOffset(from: $0, to: $1, in: selection) }
+                Group {
+                    if selection.mode == .daily {
+                        CalendarDayStrip(selection: selection, pager: pager,
+                                         anchor: anchor ?? selection.selectedDate,
+                                         reach: Self.reach, onSelect: onSelect)
+                    } else {
+                        CalendarPeriodStrip(selection: selection, pager: pager,
+                                            anchor: anchor ?? selection.selectedDate, reach: Self.reach,
+                                            onSelect: onSelect)
+                    }
                 }
+                .excludesSidebarPan("calendar-strip")
             }
             .padding(.bottom, 10)
             .background { Theme.sidebarBackground.ignoresSafeArea(edges: .top) }
@@ -43,7 +48,12 @@ struct CalendarBrowserView<Response: View>: View {
                 Rectangle().fill(CalendarMetrics.hairline(colorScheme)).frame(height: 0.5).allowsHitTesting(false)
             }
             .zIndex(1)
-            periodPager
+            ZStack {
+                periodPager
+                    .id(epoch)
+                    .transition(entrance)
+            }
+            .clipped()
         }
         .foregroundStyle(Theme.ink)
         .background(Theme.sidebarBackground)
@@ -67,21 +77,12 @@ struct CalendarBrowserView<Response: View>: View {
                 ForEach(periods, id: \.self) { period in
                     response(period)
                         .frame(maxHeight: .infinity, alignment: .top)
-                        .padding(.horizontal, Self.pageGap / 2)
                         .containerRelativeFrame(.horizontal)
-                        .visualEffect { content, proxy in
-                            let travel = min(1, abs(proxy.frame(in: .scrollView(axis: .horizontal)).minX)
-                                / max(1, proxy.size.width))
-                            return content
-                                .scaleEffect(1 - 0.045 * travel)
-                                .opacity(1 - 0.18 * travel)
-                        }
                         .id(period)
                 }
             }
             .scrollTargetLayout()
         }
-        .padding(.horizontal, -Self.pageGap / 2)
         .onScrollGeometryChange(for: CGPoint.self) { geometry in
             CGPoint(x: geometry.contentOffset.x, y: geometry.containerSize.width)
         } action: { _, value in
@@ -110,20 +111,34 @@ struct CalendarBrowserView<Response: View>: View {
         .onAppear {
             if anchor == nil { anchor = selection.selectedDate }
         }
+        .task(id: selection.snapshot) {
+            guard (try? await Task.sleep(for: .milliseconds(450))) != nil,
+                  let index = periods.firstIndex(of: selection.snapshot) else { return }
+            CalendarAgendaFeed.shared.prefetch([index - 1, index + 1].filter(periods.indices.contains).map { periods[$0] })
+        }
         .onChange(of: selection.snapshot) { old, next in
-            let edge = nearEdge(next)
-            guard visiblePeriod != next || edge else { return }
-            if old.mode == next.mode, !edge {
-                withAnimation(CalendarMotion.spring) { visiblePeriod = next }
-            } else {
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    anchor = next.selectedDate
-                    visiblePeriod = next
-                }
+            guard visiblePeriod != next else { return }
+            let distance = old.mode == next.mode ? pageOffset(from: old.selectedDate, to: next.selectedDate, in: selection) : nil
+            if let distance, abs(distance) == 1, !nearEdge(next) {
+                withAnimation(CalendarMotion.settle(reduceMotion)) { visiblePeriod = next }
+                return
+            }
+            entrance = switch distance {
+            case .some(let pages) where !reduceMotion:
+                .push(from: pages > 0 ? .trailing : .leading)
+            default:
+                .opacity
+            }
+            withAnimation(reduceMotion || distance == nil ? .easeOut(duration: 0.22) : CalendarMotion.spring) {
+                anchor = next.selectedDate
+                visiblePeriod = next
+                epoch += 1
             }
         }
+    }
+
+    private func choose(_ mode: CalendarBrowserMode) {
+        withAnimation(.easeOut(duration: 0.22)) { _ = selection.propose({ $0.chooseMode(mode) }, accepting: onSelect) }
     }
 
     private func pageOffset(from start: CalendarBrowserDay, to end: CalendarBrowserDay,
@@ -176,13 +191,13 @@ struct CalendarBrowserView<Response: View>: View {
                     Button { selection.propose({ $0.today() }, accepting: onSelect) } label: {
                         Label { Text("Today") } icon: { CalendarMenuGlyph.image(.today) }
                     }
-                    Button { selection.propose({ $0.chooseMode(.daily) }, accepting: onSelect) } label: {
+                    Button { choose(.daily) } label: {
                         Label { Text("Daily") } icon: { CalendarMenuGlyph.image(.daily) }
                     }
-                    Button { selection.propose({ $0.chooseMode(.weekly) }, accepting: onSelect) } label: {
+                    Button { choose(.weekly) } label: {
                         Label { Text("Weekly") } icon: { CalendarMenuGlyph.image(.weekly) }
                     }
-                    Button { selection.propose({ $0.chooseMode(.monthly) }, accepting: onSelect) } label: {
+                    Button { choose(.monthly) } label: {
                         Label { Text("Monthly") } icon: { CalendarMenuGlyph.image(.monthly) }
                     }
                 } label: {

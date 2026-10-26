@@ -78,9 +78,9 @@ extension RootView {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .animation(DockView.keyboardCurve, value: typing)
         .task { await feed.runClock() }
-        .task(id: calendarSelection?.selectedDate) {
+        .onChange(of: calendarSelection?.selectedDate, initial: true) {
             guard let selection = calendarSelection else { return }
-            await feed.loadGoogle(around: selection.selectedInstant)
+            feed.loadGoogle(around: selection.selectedInstant)
         }
         .onChange(of: calendarIsTopmost, initial: true) { _, topmost in
             feed.isFront = topmost
@@ -102,6 +102,7 @@ extension RootView {
         let feed = CalendarAgendaFeed.shared
         feed.refreshClock()
         feed.invalidate()
+        if let selection = calendarSelection { feed.loadGoogle(around: selection.selectedInstant) }
         guard let selection = calendarSelection, selection.timeZone != TimeZone.current.identifier,
               let moved = try? CalendarBrowserSelection(date: selection.selectedDate, mode: selection.mode,
                                                         timeZone: TimeZone.current.identifier) else { return }

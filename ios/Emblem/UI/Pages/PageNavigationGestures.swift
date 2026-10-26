@@ -57,6 +57,18 @@ struct SidebarDismissSurface: UIViewRepresentable {
     }
 }
 
+@MainActor
+enum SidebarPanExclusion {
+    static var frames: [String: CGRect] = [:]
+}
+
+extension View {
+    func excludesSidebarPan(_ id: String) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SidebarPanExclusion.frames[id] = $0 }
+            .onDisappear { SidebarPanExclusion.frames[id] = nil }
+    }
+}
+
 struct SidebarOpeningPanGesture: UIGestureRecognizerRepresentable {
     let isEnabled: Bool
     let onChanged: (CGFloat) -> Void
@@ -126,6 +138,8 @@ struct SidebarOpeningPanGesture: UIGestureRecognizerRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldReceive touch: UITouch
         ) -> Bool {
+            let point = touch.location(in: nil)
+            if SidebarPanExclusion.frames.values.contains(where: { $0.contains(point) }) { return false }
             var view = touch.view
             while let current = view {
                 if current is UIControl { return false }

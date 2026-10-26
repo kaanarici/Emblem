@@ -98,6 +98,7 @@ final class StubServer: @unchecked Sendable {
     private var history: [Conversation]
     private let listPageSize: Int
     private let google: [GoogleEvent]
+    private var googleFailures: Int
     private var received: [String] = []
     private var changes: [(action: String, keys: [String])] = []
     private(set) var url = ""
@@ -107,8 +108,9 @@ final class StubServer: @unchecked Sendable {
     var conversationChanges: [(action: String, keys: [String])] { lock.withLock { changes } }
 
     init(replies: [String] = ["natural-evidence"], history: [Conversation] = [], listPageSize: Int = 50,
-         google: [GoogleEvent] = []) throws {
+         google: [GoogleEvent] = [], googleFailures: Int = 0) throws {
         self.google = google
+        self.googleFailures = googleFailures
         self.replies = replies
         self.history = history
         self.listPageSize = listPageSize
@@ -183,6 +185,11 @@ final class StubServer: @unchecked Sendable {
 
                 """)
         case "/api/calendar/events":
+            let failing = lock.withLock {
+                defer { googleFailures = max(0, googleFailures - 1) }
+                return googleFailures > 0
+            }
+            guard !failing else { return ("application/json", "{}") }
             guard !google.isEmpty else { return ("application/json", #"{"google":{"state":"notConnected","accounts":[]},"events":[]}"#) }
             let iso = ISO8601DateFormatter()
             let rows = google.enumerated().map { index, event in

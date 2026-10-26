@@ -80,6 +80,8 @@ final class CalendarAgendaFeed {
     @ObservationIgnored private var deviceDays: [DateInterval: [CalendarAgendaEvent]] = [:]
     @ObservationIgnored private var freshTodos: Set<DateInterval> = []
     @ObservationIgnored private var googleWindow: DateInterval?
+    @ObservationIgnored private var googleLoad: Task<Void, Never>?
+    @ObservationIgnored private var googleLoadedAt: Date?
 
     var now: Date { tick }
 
@@ -93,6 +95,19 @@ final class CalendarAgendaFeed {
         deviceDays.removeAll()
         freshTodos.removeAll()
         revision += 1
+    }
+
+    func prefetch(_ periods: [CalendarBrowserSnapshot]) {
+        let calendar = Calendar.current
+        for period in periods {
+            var day = period.interval.start
+            while day < period.interval.end, let next = calendar.date(byAdding: .day, value: 1, to: day) {
+                let interval = DateInterval(start: day, end: next)
+                _ = events(in: interval)
+                if period.scope == .day { _ = todos(in: interval) }
+                day = next
+            }
+        }
     }
 
     func refreshClock() { tick = .now }
@@ -178,28 +193,50 @@ final class CalendarAgendaFeed {
         }
     }
 
-    func loadGoogle(around date: Date, force: Bool = false) async {
+    func loadGoogle(around date: Date, force: Bool = false) {
         let calendar = Calendar.current
         let wanted = DateInterval(start: calendar.date(byAdding: .day, value: -7, to: date) ?? date,
                                   end: calendar.date(byAdding: .day, value: 21, to: date) ?? date)
-        if !force, let window = googleWindow, window.start <= wanted.start, window.end >= wanted.end { return }
+        let fresh = googleLoadedAt.map { now.timeIntervalSince($0) < 300 } ?? false
+        if !force, let window = googleWindow, window.start <= wanted.start, window.end >= wanted.end,
+           fresh || googleLoad != nil { return }
         guard let start = calendar.date(byAdding: .day, value: -14, to: calendar.startOfDay(for: date)),
               let end = calendar.date(byAdding: .day, value: 31, to: start) else { return }
         let window = DateInterval(start: start, end: end)
         googleWindow = window
-        do {
-            let response = try await CalendarGoogleSource.fetch(window)
-            withAnimation(.smooth(duration: 0.3)) {
-                google = CalendarGoogleSource.events(response, calendar: calendar)
-                googleState = CalendarGoogleSource.state(response)
-                revision += 1
+        googleLoad?.cancel()
+        googleLoad = Task { await fetchGoogle(window, calendar: calendar) }
+    }
+
+    private func fetchGoogle(_ window: DateInterval, calendar: Calendar) async {
+        var offline = false
+        for delay in [0, 1, 3, 8] {
+            if delay > 0, (try? await Task.sleep(for: .seconds(delay))) == nil { return }
+            guard googleWindow == window else { return }
+            do {
+                let response = try await CalendarGoogleSource.fetch(window)
+                guard !Task.isCancelled, googleWindow == window else { return }
+                googleLoad = nil
+                googleLoadedAt = .now
+                withAnimation(.smooth(duration: 0.3)) {
+                    google = CalendarGoogleSource.events(response, calendar: calendar)
+                    googleState = CalendarGoogleSource.state(response)
+                    revision += 1
+                }
+                return
+            } catch {
+                let code = (error as? URLError)?.code
+                if Task.isCancelled || error is CancellationError || code == .cancelled { return }
+                offline = [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost].contains(code)
             }
-        } catch let error as URLError where [.notConnectedToInternet, .networkConnectionLost, .timedOut].contains(error.code) {
-            googleWindow = nil
-            googleState = googleState == .notConnected ? .notConnected : .offline
-        } catch {
-            googleWindow = nil
-            if googleState != .notConnected { googleState = .unavailable }
+        }
+        guard googleWindow == window else { return }
+        googleLoad = nil
+        googleWindow = nil
+        switch googleState {
+        case .connected, .partial, .offline, .unavailable:
+            withAnimation(.smooth(duration: 0.3)) { googleState = offline ? .offline : .unavailable }
+        case .unknown, .notConnected: break
         }
     }
 
@@ -453,6 +490,14 @@ enum CalendarClock {
         let minutes = Int(event.start.timeIntervalSince(now) / 60)
         guard minutes >= 0, minutes <= 90 else { return nil }
         return minutes < 1 ? "Starting now" : "In \(duration(minutes))"
+    }
+
+    static func leave(for event: CalendarAgendaEvent, now: Date, travel: Int?, countdown: String,
+                      calendar: Calendar) -> String {
+        guard let travel, event.start > now else { return countdown }
+        let leave = event.start.addingTimeInterval(-Double(travel * 60))
+        let when = leave <= now ? "Leave now" : "Leave by " + short(leave, calendar: calendar)
+        return "\(countdown) · \(when) · \(duration(travel)) away"
     }
 
     static func text(_ date: Date, calendar: Calendar, format: String) -> String {

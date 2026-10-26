@@ -2,6 +2,19 @@ import SwiftUI
 
 enum CalendarMotion {
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.88)
+
+    static func settle(_ reduceMotion: Bool) -> Animation { reduceMotion ? .easeOut(duration: 0.2) : spring }
+
+    static func flick(_ velocity: CGFloat, toward distance: CGFloat) -> Animation {
+        let relative = distance == 0 ? 0 : max(0, min(8, velocity / distance))
+        return .interpolatingSpring(duration: 0.42, bounce: 0, initialVelocity: relative)
+    }
+
+    static func pages(drag: CGFloat, velocity: CGFloat, stride: CGFloat) -> Int {
+        let projected = drag + velocity * 0.2
+        guard abs(projected) > stride / 2 else { return 0 }
+        return projected < 0 ? 1 : -1
+    }
 }
 
 @Observable final class CalendarPagerTrack {
@@ -12,17 +25,53 @@ enum CalendarMotion {
     func page(reach: Int) -> CGFloat { offset / max(1, stride) - CGFloat(reach) }
 }
 
+struct CalendarStripIndex {
+    let calendar: Calendar
+    let zone: TimeZone
+    private let reference: Date
+
+    init(calendar: Calendar, zone: TimeZone) {
+        self.calendar = calendar
+        self.zone = zone
+        let origin = Date(timeIntervalSinceReferenceDate: 0)
+        reference = calendar.dateInterval(of: .weekOfYear, for: origin)?.start ?? origin
+    }
+
+    func day(_ day: CalendarBrowserDay) -> Int {
+        day.date(in: zone).flatMap { calendar.dateComponents([.day], from: reference, to: $0).day } ?? 0
+    }
+
+    func date(day index: Int) -> Date { calendar.date(byAdding: .day, value: index, to: reference) ?? reference }
+
+    func period(_ day: CalendarBrowserDay, monthly: Bool) -> Int {
+        monthly ? day.year * 12 + day.month - 1 : Int((Double(self.day(day)) / 7).rounded(.down))
+    }
+
+    func start(period index: Int, monthly: Bool) -> Date {
+        guard monthly else { return date(day: index * 7) }
+        var parts = DateComponents(year: index / 12, month: index % 12 + 1, day: 1)
+        parts.timeZone = zone
+        return calendar.date(from: parts) ?? reference
+    }
+}
+
+private struct CalendarStripThumb: View {
+    var body: some View {
+        Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
 private struct CalendarStripLabels: View {
     let primary: String
     let secondary: String
     let focused: Bool
-    let strong: Bool
+    let today: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 1) {
             Text(primary)
-                .font(.system(size: 17, weight: focused || strong ? .semibold : .regular))
+                .font(.system(size: 17, weight: focused || today ? .semibold : .regular))
                 .monospacedDigit()
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
@@ -37,56 +86,92 @@ private struct CalendarStripLabels: View {
     }
 }
 
+private extension View {
+    func calendarSettle(_ value: some Equatable, while dragging: Bool, reduceMotion: Bool) -> some View {
+        transaction(value: value) { transaction in
+            guard transaction.animation == nil, !dragging else { return }
+            transaction.animation = CalendarMotion.settle(reduceMotion)
+        }
+    }
+}
+
 struct CalendarDayStrip: View {
     let selection: CalendarBrowserSelection
     let pager: CalendarPagerTrack
     let anchor: CalendarBrowserDay
     let reach: Int
     let onSelect: (CalendarBrowserIntent) -> Bool
+    @State private var drag: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let height: CGFloat = 44
+    static let height: CGFloat = 48
 
     var body: some View {
-        let calendar = selection.calendar
-        let anchorDate = anchor.date(in: selection.zone) ?? selection.selectedInstant
-        let weekStart = calendar.dateInterval(of: .weekOfYear, for: anchorDate)?.start ?? anchorDate
-        let anchorCell = CGFloat(calendar.dateComponents([.day], from: weekStart, to: anchorDate).day ?? 0)
-        let selected = CGFloat(calendar.dateComponents([.day], from: anchorDate, to: selection.selectedInstant).day ?? 0)
-        let position = anchorCell + (pager.dragging ? pager.page(reach: reach) : selected)
+        let index = CalendarStripIndex(calendar: selection.calendar, zone: selection.zone)
+        let selected = index.day(selection.selectedDate)
+        let position = pager.dragging ? CGFloat(index.day(anchor)) + pager.page(reach: reach) : CGFloat(selected)
         let focused = Int(position.rounded())
-        let week = Int((CGFloat(focused) / 7).rounded(.down))
-        let today = CalendarBrowserDay(date: CalendarAgendaFeed.shared.now, timeZone: selection.zone)
-        let weekdays = calendar.shortStandaloneWeekdaySymbols
+        let week = Int((Double(focused) / 7).rounded(.down))
+        let today = index.day(CalendarBrowserDay(date: CalendarAgendaFeed.shared.now, timeZone: selection.zone))
         GeometryReader { proxy in
             let cell = (proxy.size.width - 2 * Theme.pageMargin) / 7
             ZStack(alignment: .topLeading) {
-                ForEach((week - 1) * 7 ..< (week + 2) * 7, id: \.self) { index in
-                    let date = calendar.date(byAdding: .day, value: index, to: weekStart) ?? weekStart
-                    let day = CalendarBrowserDay(date: date, timeZone: selection.zone)
-                    dayCell(day, weekday: weekdays[calendar.component(.weekday, from: date) - 1], today: day == today,
-                            focused: index == focused)
+                CalendarStripThumb()
+                    .frame(width: cell - 4, height: Self.height)
+                    .offset(x: position * cell + 2)
+                    .calendarSettle(position, while: pager.dragging, reduceMotion: reduceMotion)
+                ForEach((week - 1) * 7 ..< (week + 2) * 7, id: \.self) { day in
+                    dayCell(index, day: day, focused: day == focused, today: day == today)
                         .frame(width: cell, height: Self.height)
-                        .offset(x: CGFloat(index) * cell)
+                        .offset(x: CGFloat(day) * cell)
                 }
             }
-            .offset(x: Theme.pageMargin - CGFloat(week * 7) * cell)
-            .animation(reduceMotion ? nil : CalendarMotion.spring, value: week)
-            .animation(.smooth(duration: 0.18), value: focused)
+            .offset(x: Theme.pageMargin - CGFloat(week * 7) * cell + drag)
+            .calendarSettle(week, while: false, reduceMotion: reduceMotion)
+            .frame(width: proxy.size.width, height: Self.height, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .highPriorityGesture(swipe(stride: 7 * cell))
         }
         .frame(height: Self.height)
         .mask { Rectangle().padding(.vertical, -24).padding(.horizontal, Theme.pageMargin - 8) }
     }
 
-    private func dayCell(_ day: CalendarBrowserDay, weekday: String, today: Bool, focused: Bool) -> some View {
-        Button {
+    private func swipe(stride: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard drag != 0 || abs(value.translation.width) > abs(value.translation.height) else { return }
+                drag = value.translation.width
+            }
+            .onEnded { value in
+                guard drag != 0 else { return }
+                let weeks = CalendarMotion.pages(drag: drag, velocity: value.velocity.width, stride: stride)
+                let target = selection.calendar.date(byAdding: .day, value: weeks * 7, to: selection.selectedInstant)
+                let travel = -CGFloat(weeks) * stride - drag
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2)
+                              : CalendarMotion.flick(value.velocity.width, toward: travel)) {
+                    drag = 0
+                    if weeks != 0, let target {
+                        selection.propose({ try $0.chooseDay(CalendarBrowserDay(date: target, timeZone: selection.zone)) },
+                                          accepting: onSelect)
+                    }
+                }
+            }
+    }
+
+    private func dayCell(_ index: CalendarStripIndex, day position: Int, focused: Bool, today: Bool) -> some View {
+        let date = index.date(day: position)
+        let day = CalendarBrowserDay(date: date, timeZone: selection.zone)
+        let weekday = index.calendar.shortStandaloneWeekdaySymbols[index.calendar.component(.weekday, from: date) - 1]
+        return Button {
             if day == selection.selectedDate {
                 CalendarAgendaFeed.shared.nowRequest += 1
             } else {
-                selection.propose({ try $0.chooseDay(day) }, accepting: onSelect)
+                withAnimation(CalendarMotion.settle(reduceMotion)) {
+                    selection.propose({ try $0.chooseDay(day) }, accepting: onSelect)
+                }
             }
         } label: {
-            CalendarStripLabels(primary: String(day.day), secondary: weekday, focused: focused, strong: today)
+            CalendarStripLabels(primary: String(day.day), secondary: weekday, focused: focused, today: today)
         }
         .buttonStyle(.pressable)
         .accessibilityLabel(selection.text(day, format: "EEEE, MMMM d, yyyy"))
@@ -101,48 +186,76 @@ struct CalendarPeriodStrip: View {
     let anchor: CalendarBrowserDay
     let reach: Int
     let onSelect: (CalendarBrowserIntent) -> Bool
-    let offset: (CalendarBrowserDay, CalendarBrowserDay) -> Int?
+    @State private var drag: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let height: CGFloat = 44
-
     var body: some View {
-        let selected = offset(anchor, selection.selectedDate) ?? 0
-        let position = pager.dragging ? pager.page(reach: reach) : CGFloat(selected)
+        let monthly = selection.mode == .monthly
+        let index = CalendarStripIndex(calendar: selection.calendar, zone: selection.zone)
+        let selected = index.period(selection.selectedDate, monthly: monthly)
+        let position = pager.dragging
+            ? CGFloat(index.period(anchor, monthly: monthly)) + pager.page(reach: reach) : CGFloat(selected)
         let center = Int(position.rounded())
+        let now = CalendarAgendaFeed.shared.now
+        let current = index.period(CalendarBrowserDay(date: now, timeZone: selection.zone), monthly: monthly)
         GeometryReader { proxy in
             let cell = (proxy.size.width - 2 * Theme.pageMargin) / 3
             ZStack(alignment: .topLeading) {
-                ForEach(center - 2 ... center + 2, id: \.self) { index in
-                    periodCell(index: index, relative: index - selected, focused: index == center)
-                        .frame(width: cell, height: Self.height)
-                        .offset(x: (CGFloat(index) - position + 1) * cell)
+                CalendarStripThumb()
+                    .frame(width: cell - 8, height: CalendarDayStrip.height)
+                    .offset(x: cell + 4)
+                ForEach(center - 2 ... center + 2, id: \.self) { period in
+                    periodCell(index, period: period, relative: period - selected, focused: period == center,
+                               current: period == current)
+                        .frame(width: cell, height: CalendarDayStrip.height)
+                        .offset(x: (CGFloat(period) - position + 1) * cell + drag)
                 }
             }
             .offset(x: Theme.pageMargin)
-            .animation(pager.dragging || reduceMotion ? nil : CalendarMotion.spring, value: position)
-            .animation(.smooth(duration: 0.18), value: center)
+            .calendarSettle(position, while: pager.dragging, reduceMotion: reduceMotion)
+            .frame(width: proxy.size.width, height: CalendarDayStrip.height, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .highPriorityGesture(swipe(stride: cell))
         }
-        .frame(height: Self.height)
+        .frame(height: CalendarDayStrip.height)
         .mask { Rectangle().padding(.vertical, -24).padding(.horizontal, Theme.pageMargin - 8) }
     }
 
-    private func periodCell(index: Int, relative: Int, focused: Bool) -> some View {
+    private func swipe(stride: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard drag != 0 || abs(value.translation.width) > abs(value.translation.height) else { return }
+                drag = value.translation.width
+            }
+            .onEnded { value in
+                guard drag != 0 else { return }
+                let periods = CalendarMotion.pages(drag: drag, velocity: value.velocity.width, stride: stride)
+                let travel = -CGFloat(periods) * stride - drag
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2)
+                              : CalendarMotion.flick(value.velocity.width, toward: travel)) {
+                    drag = 0
+                    if periods != 0 { selection.propose({ try $0.choosePeriod(offset: periods) }, accepting: onSelect) }
+                }
+            }
+    }
+
+    private func periodCell(_ index: CalendarStripIndex, period: Int, relative: Int, focused: Bool,
+                            current: Bool) -> some View {
         let calendar = selection.calendar
         let monthly = selection.mode == .monthly
-        let base = anchor.date(in: selection.zone) ?? selection.selectedInstant
-        let date = calendar.date(byAdding: selection.mode.component, value: index, to: base) ?? base
-        let interval = calendar.dateInterval(of: selection.mode.component, for: date) ?? DateInterval(start: date, duration: 1)
-        let start = CalendarBrowserDay(date: interval.start, timeZone: selection.zone)
-        let last = CalendarBrowserDay(date: interval.end.addingTimeInterval(-1), timeZone: selection.zone)
+        let start = CalendarBrowserDay(date: index.start(period: period, monthly: monthly), timeZone: selection.zone)
+        let last = CalendarBrowserDay(date: index.date(day: index.day(start) + 6), timeZone: selection.zone)
         let tail = start.month == last.month ? String(last.day) : selection.text(last, format: "MMM d")
+        let week = index.start(period: period, monthly: false)
         return Button {
-            selection.propose({ try $0.choosePeriod(offset: relative) }, accepting: onSelect)
+            withAnimation(CalendarMotion.settle(reduceMotion)) {
+                selection.propose({ try $0.choosePeriod(offset: relative) }, accepting: onSelect)
+            }
         } label: {
             CalendarStripLabels(
                 primary: monthly ? selection.text(start, format: "MMMM") : selection.text(start, format: "MMM d") + "–" + tail,
-                secondary: monthly ? String(start.year) : "Week \(calendar.component(.weekOfYear, from: date))",
-                focused: focused, strong: interval.holds(CalendarAgendaFeed.shared.now))
+                secondary: monthly ? String(start.year) : "Week \(calendar.component(.weekOfYear, from: week))",
+                focused: focused, today: current)
         }
         .buttonStyle(.pressable)
         .accessibilityLabel(monthly ? selection.text(start, format: "MMMM yyyy")

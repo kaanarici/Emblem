@@ -8,14 +8,15 @@ final class CalendarJourneyTests: JourneyTestCase {
             .init(title: "Design review", start: Date().addingTimeInterval(-600)),
             .init(title: "Dentist", start: at(1, 10)),
             .init(title: "Coffee with Ana", start: at(-1, 15), minutes: 30),
-        ])
+            .init(title: "Offsite", start: at(7, 11)),
+        ], googleFailures: 2)
         app.resetAuthorizationStatus(for: .calendar)
         app.resetAuthorizationStatus(for: .reminders)
         launch(server)
 
         tap(app.buttons["home-calendar"], timeout: 10)
-        XCTAssertTrue(googleEvent(0).waitForExistence(timeout: 10))
-        XCTAssertFalse(element("calendar-notice").exists)
+        XCTAssertTrue(googleEvent(0).waitForExistence(timeout: 15))
+        XCTAssertFalse(element("calendar-notice").exists, "A retried Google load showed an error")
         XCTAssertTrue(day(offset: 0).isSelected)
 
         flick(towardPrevious: false)
@@ -26,10 +27,22 @@ final class CalendarJourneyTests: JourneyTestCase {
         flick(towardPrevious: true)
         expectSelected(day(offset: -1))
         XCTAssertTrue(googleEvent(2).waitForExistence(timeout: 5))
+        XCTAssertFalse(element("calendar-notice").exists, "Paging showed a Google error")
 
         tap(app.buttons["calendar-go-to-today"])
         expectSelected(day(offset: 0))
-        XCTAssertTrue(googleEvent(0).waitForExistence(timeout: 5))
+        tap(onScreen("calendar-next-day"))
+        expectSelected(day(offset: 1))
+
+        swipeStrip(towardPrevious: false)
+        expectSelected(day(offset: 8))
+        swipeStrip(towardPrevious: true)
+        expectSelected(day(offset: 1))
+        swipeStrip(towardPrevious: false)
+        expectSelected(day(offset: 8))
+        flick(towardPrevious: true)
+        expectSelected(day(offset: 7))
+        XCTAssertTrue(googleEvent(3).waitForExistence(timeout: 5))
     }
 
     func testAddingAnEventFromTheDockSavesItToTheCalendar() throws {
@@ -109,6 +122,15 @@ final class CalendarJourneyTests: JourneyTestCase {
     private func expectValue(_ element: XCUIElement, _ value: String) {
         let matched = expectation(for: NSPredicate(format: "value == %@", value), evaluatedWith: element)
         wait(for: [matched], timeout: 5)
+    }
+
+    private func swipeStrip(towardPrevious: Bool) {
+        let strip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'calendar-day-'")).firstMatch
+        let y = strip.frame.midY / app.frame.height
+        let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: y))
+        let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: y))
+        let (from, to) = towardPrevious ? (left, right) : (right, left)
+        from.press(forDuration: 0.02, thenDragTo: to, withVelocity: 1600, thenHoldForDuration: 0)
     }
 
     private func flick(towardPrevious: Bool) {
