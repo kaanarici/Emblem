@@ -13,6 +13,7 @@ export const DEFAULT_MODELS = {
   groq: "openai/gpt-oss-120b",
   openai: "gpt-6-luna",
   openrouter: MANAGED_LUNA,
+  modelgo: "",
 } as const;
 
 type PlatformProvider = keyof typeof DEFAULT_MODELS;
@@ -51,6 +52,7 @@ const CREDENTIAL_ENV = {
   groq: "GROQ_API_KEY",
   openai: "OPENAI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  modelgo: "MODELGO_API_KEY",
 } as const satisfies Record<InferenceTarget["provider"], string>;
 
 const USER_SELECTABLE: readonly {
@@ -88,6 +90,15 @@ function languageModel(
       return openAIModel(modelId, apiKey);
     case "openrouter":
       return openRouterModel(modelId, apiKey);
+    case "modelgo":
+      return createOpenAICompatible({
+        name: "modelgo",
+        baseURL: "https://api.modelgo.ai/v1",
+        apiKey,
+        supportsStructuredOutputs: true,
+        includeUsage: true,
+        fetch: strictSchemaFetch(makeOpenAIStrictCompatible),
+      }).chatModel(modelId);
   }
 }
 
@@ -101,20 +112,28 @@ function platformResearch(): PlatformTarget {
     throw new InferenceConfigurationError("LLM_PROVIDER is unsupported");
   }
   const modelId = optionalEnv("LLM_MODEL") ?? DEFAULT_MODELS[provider];
+  if (!modelId) throw new InferenceConfigurationError("LLM_MODEL is required for ModelGo");
   if (modelId.length > 160) throw new InferenceConfigurationError("LLM_MODEL is too long");
   return { provider, modelId };
 }
 
 function platformCompose(research: PlatformTarget): PlatformTarget {
   const configured = optionalEnv("LLM_COMPOSE_MODEL");
-  if (!configured && (research.provider === "openai" || research.provider === "openrouter")) {
+  if (
+    !configured &&
+    (research.provider === "openai" ||
+      research.provider === "openrouter" ||
+      research.provider === "modelgo")
+  ) {
     return research;
   }
   const model = configured ?? DEFAULT_MODELS.cerebras;
   if (model.length > 160) throw new InferenceConfigurationError("LLM_COMPOSE_MODEL is too long");
-  for (const provider of ["google", "openai", "openrouter"] as const) {
+  for (const provider of ["google", "openai", "openrouter", "modelgo"] as const) {
     if (model.startsWith(`${provider}:`)) {
-      return { provider, modelId: model.slice(provider.length + 1) };
+      const modelId = model.slice(provider.length + 1).trim();
+      if (!modelId) throw new InferenceConfigurationError("Composition model id is missing");
+      return { provider, modelId };
     }
   }
   return { provider: "cerebras", modelId: model };
@@ -187,7 +206,11 @@ export function resolveInferenceProfile(
 }
 
 export function usesOpenAIStrictSchema(target: Pick<InferenceTarget, "provider" | "modelId">) {
-  return target.provider === "openai" || target.provider === "openrouter";
+  return (
+    target.provider === "openai" ||
+    target.provider === "openrouter" ||
+    target.provider === "modelgo"
+  );
 }
 
 export function getModel(): LanguageModel {

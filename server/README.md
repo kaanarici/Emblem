@@ -47,7 +47,7 @@ Every request carries its own credentials. There is no cookie or session.
 
 ## Models
 
-`LLM_PROVIDER` picks the research model. Composition runs on the same model when the provider is `openai` or `openrouter`, and on Cerebras otherwise, unless `LLM_COMPOSE_MODEL` says otherwise.
+`LLM_PROVIDER` picks the research model. Composition runs on the same model when the provider is `openai`, `openrouter` or `modelgo`, and on Cerebras otherwise, unless `LLM_COMPOSE_MODEL` says otherwise.
 
 | `LLM_PROVIDER`       | Default model                               | Keys needed                                               |
 | -------------------- | ------------------------------------------- | --------------------------------------------------------- |
@@ -55,9 +55,20 @@ Every request carries its own credentials. There is no cookie or session.
 | `openai`             | `gpt-6-luna`, Responses API, `store: false` | `OPENAI_API_KEY`                                          |
 | `google`             | `gemini-3.5-flash-lite`                     | `GEMINI_API_KEY`, plus `CEREBRAS_API_KEY` for composition |
 | `groq`               | `openai/gpt-oss-120b`                       | `GROQ_API_KEY`, plus `CEREBRAS_API_KEY` for composition   |
+| `modelgo`            | Required via `LLM_MODEL`                    | `MODELGO_API_KEY`                                         |
 | `openrouter`         | `openai/gpt-6-luna`                         | `OPENROUTER_API_KEY`                                      |
 
-`LLM_MODEL` overrides the research model. With `openrouter` it takes any OpenRouter model ID that supports tool calling and JSON output, such as `anthropic/claude-haiku-5.5`, `google/gemini-3.5-flash-lite`, `deepseek/deepseek-v4.1-flash` or `mistralai/mistral-large-4-0`. `LLM_COMPOSE_MODEL` sets composition to `google:<model>`, `openai:<model>`, `openrouter:<model>` or a bare Cerebras model ID. `OPENAI_REASONING_EFFORT` is one of `none` (the default), `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. `lib/provider.ts` resolves the profile.
+`LLM_MODEL` overrides the research model. With `openrouter` it takes any OpenRouter model ID that supports tool calling and JSON output, such as `anthropic/claude-haiku-5.5`, `google/gemini-3.5-flash-lite`, `deepseek/deepseek-v4.1-flash` or `mistralai/mistral-large-4-0`. `LLM_COMPOSE_MODEL` sets composition to `google:<model>`, `openai:<model>`, `openrouter:<model>`, `modelgo:<model>` or a bare Cerebras model ID. `OPENAI_REASONING_EFFORT` is one of `none` (the default), `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. `lib/provider.ts` resolves the profile.
+
+To use ModelGo for both research and composition, set `LLM_PROVIDER=modelgo`,
+`MODELGO_API_KEY` and `LLM_MODEL` to a ModelGo model ID. There is no default ModelGo
+model: choose one that supports tool calling, streaming and strict JSON schema
+output. Requests go to `https://api.modelgo.ai/v1/chat/completions`. ModelGo uses
+the OpenAI-compatible Chat Completions adapter and strict schema normalization;
+it does not use the Responses API. Composition remains validated by the server.
+ModelGo image input and per-request user keys are not enabled. A model that
+rejects strict schema output fails normally; there is no automatic provider switch.
+Use `LLM_COMPOSE_MODEL=modelgo:<model>` to select it only for composition.
 
 The app can also pick a model per request:
 
