@@ -50,7 +50,7 @@ Only Convex and one model provider are required. Everything else turns on when y
 | Service | Used for |
 | --- | --- |
 | [Convex](https://convex.dev) | Database, scheduled pages, rate limits (required) |
-| Cerebras, OpenAI, Google, Groq or OpenRouter | The model (one is required) |
+| Cerebras, OpenAI, Google, Groq, OpenRouter or ModelGo | The model (one is required) |
 | [Exa](https://exa.ai) | Web search and photos |
 | [Clerk](https://clerk.com) | Sign-in (otherwise everyone is a guest) |
 | [Composio](https://composio.dev) | Gmail and Google Calendar |

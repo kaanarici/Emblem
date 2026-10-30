@@ -7,6 +7,7 @@ const inferenceTargetValidator = v.object({
     v.literal("google"),
     v.literal("openrouter"),
     v.literal("openai"),
+    v.literal("modelgo"),
   ),
   modelId: v.string(),
   credentialSource: v.union(v.literal("platform"), v.literal("user")),

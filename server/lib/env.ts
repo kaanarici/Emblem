@@ -26,6 +26,7 @@ const SPEC: EnvSpec[] = [
   },
   { name: "XAI_API_KEY", whenMissing: "TTS disabled" },
   { name: "GROQ_API_KEY", whenMissing: "groq provider unavailable" },
+  { name: "MODELGO_API_KEY", whenMissing: "ModelGo inference unavailable" },
   { name: "OPENAI_API_KEY", whenMissing: "OpenAI provider unavailable" },
   { name: "OPENROUTER_API_KEY", whenMissing: "managed OpenRouter model selections unavailable" },
   {

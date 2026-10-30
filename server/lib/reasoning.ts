@@ -44,7 +44,7 @@ export function reasoningOptions(
       },
     };
   }
-  if (provider === "openai") return {};
+  if (provider === "openai" || provider === "modelgo") return {};
   if (provider === "openrouter") {
     const resolved = modelId === MANAGED_LUNA ? "none" : effort;
     return { providerOptions: { openrouter: { reasoning: { effort: resolved } } } };
